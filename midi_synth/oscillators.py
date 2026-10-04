@@ -47,11 +47,17 @@ class Oscillator:
             return 4.0 * np.abs(t - 0.5) - 1.0
         return np.sin(2.0 * np.pi * t)
 
-    def generate(self, freq, n, phase_mod=None):
+    def advance(self, freq, n):
         inc = freq / self.sr
         t = np.mod(self.phase + inc * np.arange(n, dtype=np.float64), 1.0)
+        self.phase = float(np.mod(self.phase + inc * n, 1.0))
+        return t
+
+    def shape(self, t, freq):
+        return self._shape(t, freq / self.sr)
+
+    def generate(self, freq, n, phase_mod=None):
+        t = self.advance(freq, n)
         if phase_mod is not None:
             t = np.mod(t + phase_mod, 1.0)
-        out = self._shape(t, inc)
-        self.phase = float(np.mod(self.phase + inc * n, 1.0))
-        return out
+        return self._shape(t, freq / self.sr)

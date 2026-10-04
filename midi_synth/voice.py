@@ -103,12 +103,28 @@ class Voice:
 
     def render(self, n, params):
         freq = self.freq * params["pitch_ratio"]
-        mod = self.osc1.generate(freq, n)
         sec_freq = freq * semitones_to_ratio(
             params["detune2_semitones"], params["detune2_cents"]
         )
-        phase_mod = mod * params["mod_index"]
-        sec = self.osc2.generate(sec_freq, n, phase_mod=phase_mod)
+        mode = params["mod_mode"]
+        depth = params["fm_depth"]
+        if mode == "sync":
+            t1 = self.osc1.advance(freq, n)
+            mod = self.osc1.shape(t1, freq)
+            sec_free = self.osc2.generate(sec_freq, n)
+            ratio = (sec_freq / freq) if freq else 1.0
+            sec_sync = self.osc2.shape(np.mod(t1 * ratio, 1.0), sec_freq)
+            sec = sec_free * (1.0 - depth) + sec_sync * depth
+        elif mode == "fm":
+            mod = self.osc1.generate(freq, n)
+            sec = self.osc2.generate(sec_freq, n, phase_mod=mod * params["mod_index"])
+        else:
+            mod = self.osc1.generate(freq, n)
+            sec = self.osc2.generate(sec_freq, n)
+            if mode == "am":
+                sec = sec * (1.0 - 0.5 * depth + 0.5 * depth * mod)
+            elif mode == "ring":
+                sec = sec * ((1.0 - depth) + depth * mod)
         mix = params["osc1_level"] * mod + params["osc2_level"] * sec
         env = self.env.process(n)
         amp = 0.22 * (0.3 + 0.7 * self.velocity)

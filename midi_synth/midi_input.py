@@ -1,11 +1,16 @@
 import mido
 
-from .config import WAVEFORMS, SEMITONE_MIN, SEMITONE_MAX, CENTS_MIN, CENTS_MAX
+from .config import WAVEFORMS, MODES, SEMITONE_MIN, SEMITONE_MAX, CENTS_MIN, CENTS_MAX
 
 
 def _waveform_from_cc(value):
     idx = min(int(value) // 32, len(WAVEFORMS) - 1)
     return WAVEFORMS[idx]
+
+
+def _mode_from_cc(value):
+    idx = min(int(value) * len(MODES) // 128, len(MODES) - 1)
+    return MODES[idx]
 
 
 class MidiInput:
@@ -26,6 +31,9 @@ class MidiInput:
             25: lambda v: self._cc_wave(2, v),
             26: self._cc_tune2,
             27: self._cc_cents2,
+            28: lambda v: self.engine.set_osc_level(2, v / 127.0),
+            29: lambda v: self.engine.set_osc_level(1, v / 127.0),
+            30: lambda v: self.engine.set_mod_mode(_mode_from_cc(v)),
         }
 
     @staticmethod

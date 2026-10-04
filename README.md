@@ -34,28 +34,79 @@ sudo apt install libportaudio2
 ## Run
 
 ```bash
-python run.py --list            # list MIDI inputs and audio outputs
-python run.py                   # listen on all MIDI ports, output to default device
+python run.py --list            # list MIDI inputs, host APIs and audio outputs
+python run.py                   # listen on all MIDI ports, auto-pick the lowest-latency output
 python run.py --input "Launchkey" --channel 1
 ```
+
+## Low latency on Windows (ASIO / WASAPI)
+
+By default PortAudio picks the **MME** host API, which can add ~100–200 ms of
+note-to-sound delay. `run.py` now auto-selects the fastest available output, in
+this order: **ASIO → WASAPI (exclusive) → WDM-KS → system default**, and prints
+the chosen backend plus the actual latency at startup:
+
+```
+Output: Focusrite USB ASIO via ASIO (exclusive)
+Latency: 5.3 ms output @ 48000 Hz, block 256
+```
+
+- `--list` shows every host API and device, so you can see whether ASIO exists.
+- **ASIO** is opt-in at the PortAudio level. The pip `sounddevice` wheel bundles
+  an ASIO-enabled DLL, but it stays off until `SD_ENABLE_ASIO` is set *before*
+  `sounddevice` is imported. `run.py` does this for you on Windows. (Use
+  `--no-asio` to disable; this opt-in does not work with the conda package.)
+- **WASAPI exclusive** mode is requested automatically and falls back to shared
+  mode if the device refuses it.
+- Force things explicitly:
+
+```bash
+python run.py --hostapi asio
+python run.py --audio-device "Focusrite USB ASIO"
+python run.py --hostapi wasapi          # WASAPI shared
+python run.py --latency low
+```
+
+If ASIO is not listed, install your interface's vendor ASIO driver first
+(or ASIO4ALL). If audio crackles, raise `--blocksize` (e.g. 512).
 
 An interactive console starts alongside the audio. Type `help`. Commands:
 
 ```
 fx <chorus|delay|reverb|bitcrush> <on|off|toggle>
 wave1/wave2 <sine|square|saw|triangle>
-fm <0-1>            # oscillator-2 FM amount
+level1/level2 <0-1>  # oscillator mix level (osc2 starts at 0)
+mode <off|fm|am|ring|sync>  # how osc1 modulates osc2
+mod <0-1>           # modulation amount (alias: fm)
 tune2 <-12..12>     # oscillator-2 coarse semitones
 cents2 <-0.5..0.5>  # oscillator-2 fine cents
 gain <0-1.2>
 alloff | status | quit
 ```
 
+> To hear the second oscillator, raise its level: `level2 0.5` (it defaults to 0
+> so you get a pure osc-1 tone until you turn it up).
+
+### Modulation modes (osc1 -> osc2)
+
+`mode` selects how osc1's output drives osc2. `mod` is the amount.
+
+| Mode | Behavior |
+|---|---|
+| `off` | osc2 runs free, unaffected by osc1 |
+| `fm` | osc1 phase-modulates osc2 -> sidebands; osc2 carrier is always on |
+| `am` | osc1 amplitude-modulates osc2; carrier stays present (never fully silent) |
+| `ring` | ring/balanced modulation, carrier suppressed: osc2 is **silent whenever osc1 is silent** |
+| `sync` | hard sync: osc1's cycle resets osc2's phase; `mod` blends free <-> synced |
+
+`ring` is the "osc2 doesn't play while osc1 is silent" behavior. Selecting any
+mode other than `off` while `mod` is 0 auto-raises it to 0.7.
+
 ## Default MIDI CC map
 
 | Control | Action |
 |---|---|
-| CC 1 | FM depth (0..1) |
+| CC 1 | modulation amount (0..1) |
 | CC 7 | master volume |
 | CC 20 | toggle Chorus |
 | CC 21 | toggle Delay |
@@ -65,6 +116,9 @@ alloff | status | quit
 | CC 25 | osc 2 waveform (same zones) |
 | CC 26 | osc 2 coarse tune (−12..+12 semitones) |
 | CC 27 | osc 2 fine tune (−0.5..+0.5 cents) |
+| CC 28 | osc 2 level (0..1) |
+| CC 29 | osc 1 level (0..1) |
+| CC 30 | modulation mode (zones: off / fm / am / ring / sync) |
 | Pitch wheel | pitch bend (±2 semitones) |
 
 Toggle CCs act on press (value ≥ 64) with edge detection.
@@ -73,7 +127,7 @@ Toggle CCs act on press (value ≥ 64) with edge detection.
 
 ```
 note ─▶ ADSR ─▶ osc1 ──┬────────────────────────────▶ Σ ─▶ chorus ─▶ delay ─▶ reverb ─▶ bitcrush ─▶ soft clip ─▶ out
-                       └─(phase mod ×FM depth)─▶ osc2 ─┘
+                       └─(mode: fm/am/ring/sync)─▶ osc2 ─┘
 ```
 
 `osc2` pitch = note pitch × 2^((semitones + cents/100)/12).
@@ -81,7 +135,7 @@ note ─▶ ADSR ─▶ osc1 ──┬──────────────
 ## Offline render (no audio device)
 
 ```bash
-python render_demo.py --out demo.wav --effects reverb,delay --wave1 saw --fm 0.4 --level2 0.6
+python render_demo.py --out demo.wav --effects reverb,delay --wave1 saw --mode ring --fm 0.7 --level2 0.6
 ```
 
 Renders a 12-note chord to a WAV file using only NumPy and the standard library.
