@@ -4,6 +4,10 @@ MAX_VOICES = 12
 
 WAVEFORMS = ("sine", "square", "saw", "triangle")
 
+MODES = ("off", "fm", "am", "ring", "sync")
+DEFAULT_MODE = "fm"
+DEFAULT_MODE_DEPTH = 0.7
+
 SEMITONE_MIN = -12.0
 SEMITONE_MAX = 12.0
 CENTS_MIN = -0.5

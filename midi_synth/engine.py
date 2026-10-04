@@ -6,6 +6,9 @@ from .config import (
     SAMPLE_RATE,
     BLOCK_SIZE,
     MAX_VOICES,
+    MODES,
+    DEFAULT_MODE,
+    DEFAULT_MODE_DEPTH,
     FM_INDEX_MAX,
     PITCH_BEND_RANGE,
     SEMITONE_MIN,
@@ -30,6 +33,7 @@ class SynthEngine:
             "osc2_waveform": "sine",
             "osc1_level": 1.0,
             "osc2_level": 0.0,
+            "mod_mode": DEFAULT_MODE,
             "fm_depth": 0.0,
             "mod_index": 0.0,
             "detune2_semitones": 0.0,
@@ -67,10 +71,28 @@ class SynthEngine:
             self.params["osc1_level"] = min(max(osc1_level, 0.0), 1.0)
             self.params["osc2_level"] = min(max(osc2_level, 0.0), 1.0)
 
+    def set_osc_level(self, osc, level):
+        with self.lock:
+            key = "osc%d_level" % osc
+            if key not in self.params:
+                raise KeyError(key)
+            self.params[key] = min(max(level, 0.0), 1.0)
+            return self.params[key]
+
     def set_fm_depth(self, depth):
         with self.lock:
             self.params["fm_depth"] = min(max(depth, 0.0), 1.0)
             self._refresh_derived()
+
+    def set_mod_mode(self, mode):
+        if mode not in MODES:
+            raise ValueError("unknown mode: %r (choose from %s)" % (mode, ", ".join(MODES)))
+        with self.lock:
+            self.params["mod_mode"] = mode
+            if mode != "off" and self.params["fm_depth"] == 0.0:
+                self.params["fm_depth"] = DEFAULT_MODE_DEPTH
+                self._refresh_derived()
+            return mode
 
     def set_detune2(self, semitones, cents=None):
         with self.lock:
@@ -158,6 +180,7 @@ class SynthEngine:
                 "osc2_waveform": self.params["osc2_waveform"],
                 "osc1_level": self.params["osc1_level"],
                 "osc2_level": self.params["osc2_level"],
+                "mod_mode": self.params["mod_mode"],
                 "fm_depth": self.params["fm_depth"],
                 "detune2_semitones": self.params["detune2_semitones"],
                 "detune2_cents": self.params["detune2_cents"],

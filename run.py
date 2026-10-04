@@ -17,10 +17,18 @@ def parse_args(argv):
                    help="MIDI input port name (repeatable). Default: all ports")
     p.add_argument("--channel", type=int, default=None,
                    help="Only accept this MIDI channel (1-16). Default: all")
-    p.add_argument("--samplerate", type=int, default=SAMPLE_RATE)
+    p.add_argument("--samplerate", type=int, default=None,
+                   help="output sample rate (default: the selected device's rate)")
     p.add_argument("--blocksize", type=int, default=BLOCK_SIZE)
     p.add_argument("--voices", type=int, default=MAX_VOICES, help="max simultaneous notes (1-12+)")
     p.add_argument("--audio-device", default=None, help="output device index or name")
+    p.add_argument("--hostapi", default=None,
+                   help="force a host API: asio, wasapi, wdm-ks, mme, ... (default: auto)")
+    p.add_argument("--latency", default="low", help="'low', 'high', or seconds (default: low)")
+    p.add_argument("--shared", action="store_true",
+                   help="do not request WASAPI exclusive mode")
+    p.add_argument("--no-asio", action="store_true",
+                   help="do not opt in to the bundled ASIO-enabled PortAudio DLL")
     p.add_argument("--channels", type=int, default=2, help="output channels")
     p.add_argument("--no-console", action="store_true", help="disable interactive command console")
     return p.parse_args(argv)
@@ -38,23 +46,35 @@ def list_devices():
             print("  - %s" % n)
     else:
         print("  (none found)")
-    print("Audio outputs:")
+    print()
+    from midi_synth import audio_backend
+
+    audio_backend.prepare_asio()
     try:
         import sounddevice as sd
 
-        for idx, dev in enumerate(sd.query_devices()):
-            if dev.get("max_output_channels", 0) > 0:
-                print("  [%d] %s (%d out)" % (idx, dev["name"], dev["max_output_channels"]))
+        print(audio_backend.format_device_listing(sd))
     except Exception as exc:
-        print("  (could not query audio: %s)" % exc)
+        print("Audio outputs: (could not query audio: %s)" % exc)
+
+
+HELP_TEXT = """commands:
+  fx <chorus|delay|reverb|bitcrush> <on|off|toggle>
+  wave1/wave2 <sine|square|saw|triangle>
+  level1/level2 <0-1>        oscillator mix level (osc2 starts at 0)
+  mode <off|fm|am|ring|sync> how osc1 modulates osc2
+  mod <0-1>                  modulation amount (alias: fm)
+  tune2 <-12..12>            osc2 coarse semitones
+  cents2 <-0.5..0.5>         osc2 fine cents
+  gain <0-1.2>               master volume
+  alloff                     release all held notes
+  status                     show current settings
+  help                       show this help
+  quit                       exit (Ctrl+C also works)"""
 
 
 def console_loop(engine):
-    help_text = (
-        "commands: fx <chorus|delay|reverb|bitcrush> <on|off|toggle>, "
-        "wave1/wave2 <sine|square|saw|triangle>, fm <0-1>, "
-        "tune2 <-12..12>, cents2 <-0.5..0.5>, gain <0-1.2>, alloff, status, quit"
-    )
+    help_text = HELP_TEXT
     print(help_text)
     while True:
         try:
@@ -76,8 +96,13 @@ def console_loop(engine):
                     print("  %s: %s" % (k, v))
             elif cmd == "alloff":
                 engine.all_notes_off()
-            elif cmd == "fm":
+            elif cmd in ("fm", "mod"):
                 engine.set_fm_depth(float(parts[1]))
+            elif cmd == "mode":
+                engine.set_mod_mode(parts[1].lower())
+            elif cmd in ("level1", "level2"):
+                osc = 1 if cmd == "level1" else 2
+                engine.set_osc_level(osc, float(parts[1]))
             elif cmd == "tune2":
                 engine.set_detune2(float(parts[1]))
             elif cmd == "cents2":
@@ -107,14 +132,44 @@ def console_loop(engine):
             print("unknown effect")
 
 
+def open_output_stream(sd, choice, args, samplerate, callback):
+    def attempt(extra):
+        kwargs = dict(
+            samplerate=samplerate,
+            blocksize=args.blocksize,
+            channels=args.channels,
+            device=choice["device"],
+            dtype="float32",
+            latency=args.latency,
+            callback=callback,
+        )
+        if extra is not None:
+            kwargs["extra_settings"] = extra
+        return sd.OutputStream(**kwargs)
+
+    try:
+        return attempt(choice["extra_settings"]), choice
+    except Exception as exc:
+        if choice["extra_settings"] is not None:
+            print("  (%s mode failed: %s; retrying shared)" % (choice["hostapi"], exc))
+            fallback = dict(choice)
+            fallback["extra_settings"] = None
+            fallback["exclusive"] = False
+            return attempt(None), fallback
+        raise
+
+
 def main(argv=None):
     args = parse_args(argv if argv is not None else sys.argv[1:])
+
+    from midi_synth import audio_backend
+
+    if not args.no_asio:
+        audio_backend.prepare_asio()
+
     if args.list:
         list_devices()
         return 0
-
-    engine = SynthEngine(sr=args.samplerate, block_size=args.blocksize,
-                         max_voices=args.voices)
 
     try:
         import sounddevice as sd
@@ -122,6 +177,21 @@ def main(argv=None):
         print("Audio backend unavailable: %s" % exc)
         print("Install PortAudio (linux: sudo apt install libportaudio2) and sounddevice.")
         return 1
+
+    try:
+        choice = audio_backend.resolve_output(
+            sd, hostapi=args.hostapi, device=args.audio_device,
+            prefer_exclusive=not args.shared,
+        )
+    except Exception as exc:
+        print("Could not select audio output: %s" % exc)
+        return 1
+
+    samplerate = args.samplerate or audio_backend.default_samplerate(
+        sd, choice["device"], SAMPLE_RATE
+    )
+    engine = SynthEngine(sr=samplerate, block_size=args.blocksize,
+                         max_voices=args.voices)
 
     midi = MidiInput(engine, ports=args.input, channel=args.channel)
     try:
@@ -137,24 +207,25 @@ def main(argv=None):
         ch = outdata.shape[1]
         for c in range(ch):
             outdata[:, c] = block
-        if status:
-            pass
 
     try:
-        stream = sd.OutputStream(
-            samplerate=args.samplerate,
-            blocksize=args.blocksize,
-            channels=args.channels,
-            device=args.audio_device,
-            dtype="float32",
-            callback=callback,
-        )
+        stream, choice = open_output_stream(sd, choice, args, samplerate, callback)
         stream.start()
     except Exception as exc:
         print("Could not open audio output: %s" % exc)
+        print("Try --list to see devices, or --hostapi / --audio-device / --samplerate.")
         midi.stop()
         return 1
 
+    mode = "exclusive" if choice.get("exclusive") else "shared"
+    print("Output: %s via %s (%s)" % (choice["device_name"], choice["hostapi"], mode))
+    try:
+        lat = stream.latency[1]
+        if lat:
+            print("Latency: %.1f ms output @ %d Hz, block %d"
+                  % (lat * 1000.0, samplerate, args.blocksize))
+    except Exception:
+        pass
     print("Playing. Press Ctrl+C to stop.")
     try:
         if args.no_console:

@@ -2,7 +2,7 @@ import argparse
 import sys
 import wave
 
-from midi_synth.config import SAMPLE_RATE, BLOCK_SIZE, WAVEFORMS
+from midi_synth.config import SAMPLE_RATE, BLOCK_SIZE, WAVEFORMS, MODES
 from midi_synth.engine import SynthEngine
 
 
@@ -12,6 +12,7 @@ def build_engine(args):
     engine.set_osc1_waveform(args.wave1)
     engine.set_osc2_waveform(args.wave2)
     engine.set_osc_levels(args.level1, args.level2)
+    engine.set_mod_mode(args.mode)
     engine.set_fm_depth(args.fm)
     engine.set_detune2(args.tune2, args.cents2)
     engine.set_master_gain(args.gain)
@@ -59,6 +60,7 @@ def parse_args(argv):
     p.add_argument("--wave2", choices=WAVEFORMS, default="sine")
     p.add_argument("--level1", type=float, default=1.0)
     p.add_argument("--level2", type=float, default=0.0)
+    p.add_argument("--mode", choices=MODES, default="fm")
     p.add_argument("--fm", type=float, default=0.0)
     p.add_argument("--tune2", type=float, default=0.0)
     p.add_argument("--cents2", type=float, default=0.0)
