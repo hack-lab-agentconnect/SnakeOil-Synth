@@ -1,0 +1,167 @@
+import threading
+
+import numpy as np
+
+from .config import (
+    SAMPLE_RATE,
+    BLOCK_SIZE,
+    MAX_VOICES,
+    FM_INDEX_MAX,
+    PITCH_BEND_RANGE,
+    SEMITONE_MIN,
+    SEMITONE_MAX,
+    CENTS_MIN,
+    CENTS_MAX,
+)
+from .voice import Voice
+from .effects import EffectChain
+
+
+class SynthEngine:
+    def __init__(self, sr=SAMPLE_RATE, block_size=BLOCK_SIZE, max_voices=MAX_VOICES):
+        self.sr = sr
+        self.block_size = block_size
+        self.max_voices = max_voices
+        self.lock = threading.RLock()
+        self.voices = [Voice(sr) for _ in range(max_voices)]
+        self.effects = EffectChain(sr)
+        self.params = {
+            "osc1_waveform": "sine",
+            "osc2_waveform": "sine",
+            "osc1_level": 1.0,
+            "osc2_level": 0.0,
+            "fm_depth": 0.0,
+            "mod_index": 0.0,
+            "detune2_semitones": 0.0,
+            "detune2_cents": 0.0,
+            "pitch_bend": 0.0,
+            "pitch_ratio": 1.0,
+            "master_gain": 0.8,
+        }
+        self._order = 0
+        self._refresh_oscillators()
+
+    def _refresh_oscillators(self):
+        for v in self.voices:
+            v.osc1.set_waveform(self.params["osc1_waveform"])
+            v.osc2.set_waveform(self.params["osc2_waveform"])
+
+    def _refresh_derived(self):
+        self.params["mod_index"] = self.params["fm_depth"] * FM_INDEX_MAX
+        self.params["pitch_ratio"] = 2.0 ** (self.params["pitch_bend"] / 12.0)
+
+    def set_osc1_waveform(self, waveform):
+        with self.lock:
+            self.params["osc1_waveform"] = waveform
+            for v in self.voices:
+                v.osc1.set_waveform(waveform)
+
+    def set_osc2_waveform(self, waveform):
+        with self.lock:
+            self.params["osc2_waveform"] = waveform
+            for v in self.voices:
+                v.osc2.set_waveform(waveform)
+
+    def set_osc_levels(self, osc1_level, osc2_level):
+        with self.lock:
+            self.params["osc1_level"] = min(max(osc1_level, 0.0), 1.0)
+            self.params["osc2_level"] = min(max(osc2_level, 0.0), 1.0)
+
+    def set_fm_depth(self, depth):
+        with self.lock:
+            self.params["fm_depth"] = min(max(depth, 0.0), 1.0)
+            self._refresh_derived()
+
+    def set_detune2(self, semitones, cents=None):
+        with self.lock:
+            self.params["detune2_semitones"] = min(
+                max(semitones, SEMITONE_MIN), SEMITONE_MAX
+            )
+            if cents is not None:
+                self.params["detune2_cents"] = min(
+                    max(cents, CENTS_MIN), CENTS_MAX
+                )
+
+    def set_master_gain(self, gain):
+        with self.lock:
+            self.params["master_gain"] = min(max(gain, 0.0), 1.5)
+
+    def set_pitch_bend(self, normalized):
+        with self.lock:
+            self.params["pitch_bend"] = normalized * PITCH_BEND_RANGE
+            self._refresh_derived()
+
+    def _allocate_voice(self):
+        for v in self.voices:
+            if not v.active:
+                return v
+        return min(self.voices, key=lambda v: (v.gate, v.trigger_order))
+
+    def note_on(self, note, velocity=100):
+        with self.lock:
+            for v in self.voices:
+                if v.active and v.note == note and v.gate:
+                    v.gate = False
+                    v.env.note_off()
+            self._order += 1
+            voice = self._allocate_voice()
+            voice.note_on(note, velocity / 127.0, self._order)
+
+    def note_off(self, note):
+        with self.lock:
+            for v in self.voices:
+                if v.note == note and v.gate:
+                    v.note_off()
+
+    def all_notes_off(self):
+        with self.lock:
+            for v in self.voices:
+                if v.active:
+                    v.note_off()
+
+    def active_note_count(self):
+        with self.lock:
+            return sum(1 for v in self.voices if v.active)
+
+    def set_effect(self, name, enabled):
+        with self.lock:
+            self.effects.get(name).enabled = bool(enabled)
+
+    def toggle_effect(self, name):
+        with self.lock:
+            fx = self.effects.get(name)
+            fx.enabled = not fx.enabled
+            return fx.enabled
+
+    def render(self, n=None, apply_effects=True):
+        if n is None:
+            n = self.block_size
+        with self.lock:
+            mix = np.zeros(n, dtype=np.float64)
+            params = self.params
+            for v in self.voices:
+                if v.active:
+                    mix += v.render(n, params)
+            if apply_effects:
+                mix = self.effects.process(mix)
+            mix *= params["master_gain"]
+            return np.tanh(mix).astype(np.float32)
+
+    def status(self):
+        with self.lock:
+            fx = {
+                name: getattr(self.effects, name).enabled
+                for name in self.effects.order
+            }
+            return {
+                "osc1_waveform": self.params["osc1_waveform"],
+                "osc2_waveform": self.params["osc2_waveform"],
+                "osc1_level": self.params["osc1_level"],
+                "osc2_level": self.params["osc2_level"],
+                "fm_depth": self.params["fm_depth"],
+                "detune2_semitones": self.params["detune2_semitones"],
+                "detune2_cents": self.params["detune2_cents"],
+                "master_gain": self.params["master_gain"],
+                "effects": fx,
+                "active_voices": sum(1 for v in self.voices if v.active),
+            }
