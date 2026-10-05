@@ -20,7 +20,8 @@ toggleable effects chain.
 
 ```bash
 python -m venv .venv && . .venv/bin/activate      # optional
-pip install -r requirements.txt
+pip install -r requirements.txt       # includes PySide6 for the GUI
+pip install -r requirements-dev.txt   # also installs test dependencies
 ```
 
 On Linux the PortAudio system library is also required:
@@ -38,6 +39,23 @@ python run.py --list            # list MIDI inputs, host APIs and audio outputs
 python run.py                   # listen on all MIDI ports, auto-pick the lowest-latency output
 python run.py --input "Launchkey" --channel 1
 ```
+
+`--channel` takes 1-16 (the channel filter is one-based).
+
+## GUI and MIDI learn
+
+The window opens by default; use `--no-gui` for the console only.
+
+- **Learn a binding:** right-click a control and choose *MIDI Learn*, or toggle the
+  *MIDI Learn* toolbar button and click controls. Then move a knob or press a button
+  on your controller. Press `Esc` to cancel. Toggles can also be learned from a note.
+  Right-click -> *Clear binding* removes it.
+- **Profiles:** the toolbar has New, Duplicate, Rename, Delete and Reset. Bindings
+  autosave to the active profile.
+- **Files:** profiles are `*.json` files in `%APPDATA%\midi-synth\profiles\` on Windows
+  (`~/.config/midi-synth/profiles/` elsewhere). Copy the files to share them.
+- `--profile NAME` starts with a given profile; `--config-dir PATH` uses another
+  config directory.
 
 ## Low latency on Windows (ASIO / WASAPI)
 
@@ -102,7 +120,9 @@ alloff | status | quit
 `ring` is the "osc2 doesn't play while osc1 is silent" behavior. Selecting any
 mode other than `off` while `mod` is 0 auto-raises it to 0.7.
 
-## Default MIDI CC map
+## Default profile CC map
+
+This is the seeded `Default` profile; it is now editable via MIDI learn.
 
 | Control | Action |
 |---|---|
