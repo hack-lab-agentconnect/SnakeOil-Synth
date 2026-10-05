@@ -35,6 +35,10 @@ from .config import (
     AMP_ATTACK_MAX,
     AMP_DECAY_MAX,
     AMP_RELEASE_MAX,
+    UNISON_MAX,
+    UNISON_DETUNE_MAX,
+    DEFAULT_UNISON_DETUNE,
+    DEFAULT_UNISON_SPREAD,
 )
 from .filters import LowPass, LPF_MIN_HZ, LPF_MAX_HZ, lpf_coefficients
 from .lfo import LFO
@@ -51,6 +55,7 @@ class SynthEngine:
         self.voices = [Voice(sr) for _ in range(max_voices)]
         self.effects = EffectChain(sr)
         self.master_lpf = LowPass(sr)
+        self.master_lpf_r = LowPass(sr)
         self.params = {
             "osc1_level": 1.0,
             "osc2_level": 0.0,
@@ -89,6 +94,9 @@ class SynthEngine:
             "lfo_dest": "pitch",
             "glide_time": 0.0,
             "glide_legato": False,
+            "unison_voices": 1,
+            "unison_detune": DEFAULT_UNISON_DETUNE,
+            "unison_spread": DEFAULT_UNISON_SPREAD,
             "lfo_pitch_ratio": 1.0,
             "lfo_filter_oct": 0.0,
             "lfo_pwm": 0.0,
@@ -98,6 +106,8 @@ class SynthEngine:
         self._last_freq = None
         self._master_bypassed = False
         self._order = 0
+        self._group_counter = 0
+        self._rng = np.random.default_rng(1234)
         self.sustain = False
         self._sustained = set()
         self._update_lpf()
@@ -174,6 +184,7 @@ class SynthEngine:
             p["lpf_coeffs"] = lpf_coefficients(p["lpf_cutoff"], p["lpf_resonance"], self.sr)
         if force_reset or was_bypassed != (p["lpf_coeffs"] is None):
             self.master_lpf.reset()
+            self.master_lpf_r.reset()
             for v in self.voices:
                 v.lpf.reset()
 
@@ -286,6 +297,26 @@ class SynthEngine:
         with self.lock:
             self.params["glide_legato"] = bool(on)
 
+    def set_unison_voices(self, n):
+        try:
+            count = int(n)
+            if isinstance(n, float) and n != count:
+                raise ValueError
+        except (TypeError, ValueError):
+            raise ValueError("unison voices must be a whole number 1-%d, got %r"
+                             % (UNISON_MAX, n)) from None
+        if not 1 <= count <= UNISON_MAX:
+            raise ValueError("unison voices must be 1-%d, got %r" % (UNISON_MAX, n))
+        with self.lock:
+            self.params["unison_voices"] = count
+            return count
+
+    def set_unison_detune(self, cents):
+        self._set_unit("unison_detune", cents, 0.0, UNISON_DETUNE_MAX)
+
+    def set_unison_spread(self, spread):
+        self._set_unit("unison_spread", spread, 0.0, 1.0)
+
     def set_master_gain(self, gain):
         with self.lock:
             self.params["master_gain"] = min(max(gain, 0.0), 1.5)
@@ -301,6 +332,40 @@ class SynthEngine:
                 return v
         return min(self.voices, key=lambda v: (v.gate, v.trigger_order))
 
+    def _allocate_group(self, count):
+        """Pick ``count`` voices: idle ones first, then whole stolen groups."""
+        chosen = [v for v in self.voices if not v.active][:count]
+        if len(chosen) >= count:
+            return chosen
+        groups = {}
+        for i, v in enumerate(self.voices):
+            if v.active:
+                key = v.group if v.group is not None else ("single", i)
+                groups.setdefault(key, []).append(v)
+        victims = sorted(
+            groups.values(),
+            key=lambda g: (any(v.gate for v in g), min(v.trigger_order for v in g)))
+        for g in victims:
+            chosen.extend(g)
+            if len(chosen) >= count:
+                break
+        return chosen
+
+    def _note_on_unison(self, note, vel, count, glide_from, glide_time):
+        p = self.params
+        pool = self._allocate_group(count)
+        voices = pool[:count]
+        for v in pool[count:]:
+            v.note_off()
+        self._group_counter += 1
+        spread_pos = np.linspace(-1.0, 1.0, count)
+        gain = 1.0 / np.sqrt(count)
+        for v, pos in zip(voices, spread_pos):
+            v.note_on(note, vel, self._order, glide_from, glide_time,
+                      detune_cents=float(pos * p["unison_detune"]),
+                      pan=float(pos * p["unison_spread"]), gain=float(gain),
+                      group=self._group_counter, random_phase=True, rng=self._rng)
+
     def note_on(self, note, velocity=100):
         with self.lock:
             self._sustained.discard(note)
@@ -310,15 +375,20 @@ class SynthEngine:
                     v.gate = False
                     v.env.note_off()
             self._order += 1
-            voice = self._allocate_voice()
             vel = velocity / 127.0 if self.params["velocity_on"] else FIXED_VELOCITY
+            count = min(self.params["unison_voices"], self.max_voices)
+            if count == 1:
+                voice = self._allocate_voice()
             glide_time = self.params["glide_time"]
             glide_from = None
             if (glide_time > 0.0 and self._last_freq is not None
                     and (not self.params["glide_legato"] or held)):
                 glide_from = self._last_freq
             self._last_freq = midi_note_to_freq(note)
-            voice.note_on(note, vel, self._order, glide_from, glide_time)
+            if count == 1:
+                voice.note_on(note, vel, self._order, glide_from, glide_time)
+            else:
+                self._note_on_unison(note, vel, count, glide_from, glide_time)
 
     def note_off(self, note):
         with self.lock:
@@ -432,9 +502,16 @@ class SynthEngine:
             lfo_filter = False
             if params["lfo_depth"] > 0.0:
                 lfo_filter = self._run_lfo(n)
+            panned = []
+            stereo = False
             for v in self.voices:
                 if v.active:
-                    mix += v.render(n, params)
+                    out_v = v.render(n, params)
+                    if v.pan != 0.0:
+                        stereo = True
+                    panned.append((v.pan, out_v))
+                    if not stereo:
+                        mix += out_v
             coeffs = params["lpf_coeffs"]
             if lfo_filter and params["lpf_mode"] == "master":
                 coeffs = self._master_lfo_coeffs()
@@ -442,10 +519,23 @@ class SynthEngine:
                     self._master_bypassed = True
                 elif self._master_bypassed:
                     self.master_lpf.reset()
+                    self.master_lpf_r.reset()
                     self._master_bypassed = False
-            if coeffs is not None and params["lpf_mode"] == "master":
-                mix = self.master_lpf.process(mix, coeffs)
-            out = np.vstack([mix, mix])
+            master = coeffs is not None and params["lpf_mode"] == "master"
+            if stereo:
+                left = np.zeros(n, dtype=np.float64)
+                right = np.zeros(n, dtype=np.float64)
+                for pan, out_v in panned:
+                    left += out_v * (1.0 - max(0.0, pan))
+                    right += out_v * (1.0 + min(0.0, pan))
+                if master:
+                    left = self.master_lpf.process(left, coeffs)
+                    right = self.master_lpf_r.process(right, coeffs)
+                out = np.vstack([left, right])
+            else:
+                if master:
+                    mix = self.master_lpf.process(mix, coeffs)
+                out = np.vstack([mix, mix])
             if apply_effects:
                 out = self.effects.process(out)
             out = np.tanh(out * params["master_gain"])
@@ -491,6 +581,9 @@ class SynthEngine:
                 "lfo_dest": self.params["lfo_dest"],
                 "glide_time": self.params["glide_time"],
                 "glide_legato": self.params["glide_legato"],
+                "unison_voices": self.params["unison_voices"],
+                "unison_detune": self.params["unison_detune"],
+                "unison_spread": self.params["unison_spread"],
                 "chorus_depth": self.effects.chorus.amount,
                 "delay_time": self.effects.delay.time_ms,
                 "delay_pingpong": self.effects.delay.pingpong,

@@ -20,6 +20,7 @@ GROUP_POSITIONS = {
     "Filter Env": (2, 1, 1, 1),
     "LFO": (2, 2, 1, 1),
     "Glide": (3, 0, 1, 1),
+    "Unison": (3, 1, 1, 1),
 }
 
 

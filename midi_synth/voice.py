@@ -112,12 +112,18 @@ class Voice:
         self.glide_from = None
         self.glide_total = 0.0
         self.glide_pos = 0.0
+        self.detune_cents = 0.0
+        self.pan = 0.0
+        self.gain = 1.0
+        self.group = None
 
     @property
     def active(self):
         return self.env.active
 
-    def note_on(self, note, velocity, order, glide_from=None, glide_time=0.0):
+    def note_on(self, note, velocity, order, glide_from=None, glide_time=0.0,
+                detune_cents=0.0, pan=0.0, gain=1.0, group=None,
+                random_phase=False, rng=None):
         self.note = note
         self.gate = True
         self.freq = midi_note_to_freq(note)
@@ -130,8 +136,16 @@ class Voice:
             self.glide_from = None
             self.glide_total = 0.0
         self.glide_pos = 0.0
-        self.osc1.reset()
-        self.osc2.reset()
+        self.detune_cents = detune_cents
+        self.pan = pan
+        self.gain = gain
+        self.group = group
+        if random_phase:
+            self.osc1.phase = rng.random()
+            self.osc2.phase = rng.random()
+        else:
+            self.osc1.reset()
+            self.osc2.reset()
         self.env.note_on()
         self.flt_env.note_on()
         self.lpf.reset()
@@ -193,6 +207,10 @@ class Voice:
             params["detune2_semitones"], params["detune2_cents"]
         ) * (2.0 if params["osc2_octave_up"] else 1.0)
         f1 = freq * (0.5 if params["osc1_octave_down"] else 1.0)
+        if self.detune_cents != 0.0:
+            ud = 2.0 ** (self.detune_cents / 1200.0)
+            f1 *= ud
+            f2 *= ud
         limit = 0.45 * self.sr
         f1 = min(f1, limit)
         f2 = min(f2, limit)
@@ -239,4 +257,6 @@ class Voice:
         lfo_amp = params.get("lfo_amp")
         if lfo_amp is not None:
             out = out * lfo_amp
+        if self.gain != 1.0:
+            out = out * self.gain
         return out

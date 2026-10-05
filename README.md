@@ -146,6 +146,25 @@ coefficients are recalculated every block instead. A filter pushed to 20 kHz or 
 the LFO is bypassed for that block, and the LFO can close an otherwise open (20 kHz)
 filter.
 
+## Unison
+
+The *Unison* group stacks several voices on every note: *Voices* 1-12 (default 1 = off,
+the sound is bit-identical to before), *Detune* 0-50 cents (default 15) and *Spread* 0-1
+(default 0.5). Console: `unison <1-12> [detune_cents] [spread]`.
+
+- The stack is drawn from the same 12-voice pool, so the CPU cost is bounded: polyphony
+  is `12 // width` notes (width 4 = 3 notes, width 12 = 1 note).
+- When the pool is short, whole groups are stolen: groups that have been released first,
+  then the oldest. A note never ends up with only some of its voices.
+- Voice `i` of `N` is detuned by `linspace(-1, 1, N)[i] * Detune` cents and panned by
+  `linspace(-1, 1, N)[i] * Spread` (balance law, centre voices untouched). Each voice is
+  scaled by `1/sqrt(N)` so loudness stays about the same as the width grows.
+- Each voice starts its oscillators at a random phase from a fixed-seed generator, so a
+  stack does not cancel or beat identically every note, yet renders repeat exactly.
+- With any panned voice the mix is stereo; with the master-bus filter on, the left and
+  right channels use two filters with the same settings. Note off, sustain pedal, all
+  notes off and panic act on the whole stack.
+
 ## Low latency on Windows (ASIO / WASAPI)
 
 By default PortAudio picks the **MME** host API, which can add ~100–200 ms of
@@ -204,6 +223,7 @@ velocity <on|off>   # off = fixed note velocity (default on)
 fltenv <-1..1>      # filter envelope amount (per-voice filter; default 0)
 lfo <rate> <depth> [wave] [dest]  # LFO: 0.05-20 Hz, depth 0-1 (0 = off); wave sine|triangle|saw|square|random; dest pitch|filter|pwm|amp
 glide <seconds>     # slide between notes, 0-2 s (default 0 = off)
+unison <1-12> [detune_cents] [spread]  # stack voices per note (default 1 = off)
 gain <0-1.2>
 alloff | status | quit
 ```

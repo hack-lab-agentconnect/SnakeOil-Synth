@@ -16,6 +16,8 @@ from .config import (
     LFO_RATE_MIN,
     LFO_RATE_MAX,
     GLIDE_MAX,
+    UNISON_MAX,
+    UNISON_DETUNE_MAX,
 )
 from .filters import LPF_MIN_HZ, LPF_MAX_HZ
 
@@ -286,6 +288,20 @@ def build_registry(engine):
         Param(id="glide_legato", label="Legato only", group="Glide", kind=TOGGLE,
               get=lambda: p["glide_legato"], set=engine.set_glide_legato,
               tooltip="Only glide when another key is still held."),
+    ]
+    params += [
+        Param(id="unison_voices", label="Voices", group="Unison", kind=CHOICE,
+              choices=tuple(str(i) for i in range(1, UNISON_MAX + 1)),
+              get=lambda: str(p["unison_voices"]), set=engine.set_unison_voices,
+              tooltip="Voices stacked per note. Polyphony drops to "
+                      "12 divided by this. 1 = off."),
+        Param(id="unison_detune", label="Detune", group="Unison", kind=CONTINUOUS,
+              minimum=0.0, maximum=UNISON_DETUNE_MAX, fmt="{:.0f} ct",
+              get=lambda: p["unison_detune"], set=engine.set_unison_detune,
+              tooltip="Pitch spread of the outermost unison voices, in cents."),
+        Param(id="unison_spread", label="Spread", group="Unison", kind=CONTINUOUS,
+              get=lambda: p["unison_spread"], set=engine.set_unison_spread,
+              tooltip="Stereo width of the unison voices."),
     ]
     pingpong = Param(
         id="fx_delay_pingpong", label="Ping-pong", group="Effects", kind=TOGGLE,

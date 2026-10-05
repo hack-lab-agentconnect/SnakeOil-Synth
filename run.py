@@ -145,6 +145,8 @@ HELP_TEXT = """commands:
                              wave sine|triangle|saw|square|random,
                              dest pitch|filter|pwm|amp
   glide <seconds>            slide between notes, 0-2 s (0 = off)
+  unison <1-12> [detune_cents] [spread]  stack voices per note (polyphony = 12 // width);
+                             detune 0-50 cents, spread 0-1
   gain <0-1.2>               master volume
   patch list                 list saved sound patches
   patch save <name>          save the current sound as a patch
@@ -312,6 +314,14 @@ def console_loop(engine, registry=None, patch_store=None, patch_defaults=None):
                 engine.set_lfo_depth(depth)
             elif cmd == "glide":
                 engine.set_glide_time(float(parts[1]))
+            elif cmd == "unison":
+                if len(parts) < 2 or len(parts) > 4:
+                    raise ValueError("unison takes <1-12> [detune_cents] [spread]")
+                engine.set_unison_voices(parts[1])
+                if len(parts) > 2:
+                    engine.set_unison_detune(float(parts[2]))
+                if len(parts) > 3:
+                    engine.set_unison_spread(float(parts[3]))
             elif cmd == "fx":
                 name = parts[1].lower()
                 action = parse_on_off(parts[2], allow_toggle=True) if len(parts) > 2 else "toggle"
