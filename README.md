@@ -178,9 +178,13 @@ low-pass filter was added do not have CC 71 and CC 74; use the toolbar's Reset t
 ## Signal flow
 
 ```
-note ─▶ ADSR ─▶ osc1 ──┬────────────────────────────▶ Σ ─▶ chorus ─▶ delay ─▶ reverb ─▶ bitcrush ─▶ soft clip ─▶ out
-                       └─(mode: fm/am/ring/sync)─▶ osc2 ─┘
+note ─▶ ADSR ─▶ osc1 ──┬────────────────────────────┐
+                       └─(mode: fm/am/ring/sync)─▶ osc2 ─┴▶ low-pass* ─▶ Σ ─▶ low-pass* ─▶ chorus ─▶ delay ─▶ reverb ─▶ bitcrush ─▶ soft clip ─▶ out
 ```
+
+\* The low-pass filter runs in one of two places: per voice before the sum (the default), or
+once on the master bus after the sum and before the effects (`--lpf-mode master`). The other
+position is bypassed. The oscillators and filter are mono; the effects are stereo.
 
 Everything up to the sum is mono. The mono mix is copied into left and right channels at the
 start of the effect chain; the effects, the volume and the soft clip then run per channel, and

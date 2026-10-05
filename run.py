@@ -62,6 +62,36 @@ def copy_block_to_output(outdata, block):
         outdata[:, 0] = block.mean(axis=1)
 
 
+class CallbackState:
+    """Remembers whether the audio callback has already reported an error."""
+
+    def __init__(self):
+        self.reported = False
+
+
+def render_into(outdata, engine, frames, state):
+    """Render a block into outdata; on any error output silence and report it once."""
+    try:
+        copy_block_to_output(outdata, engine.render(frames))
+    except Exception as exc:
+        outdata.fill(0)
+        if not state.reported:
+            state.reported = True
+            print("Audio render error (output muted while it persists): %r" % (exc,))
+
+
+def parse_on_off(text, allow_toggle=False):
+    """Return True/False for on/off (case-insensitive), 'toggle' if allowed, else None."""
+    word = text.strip().lower() if isinstance(text, str) else ""
+    if word == "on":
+        return True
+    if word == "off":
+        return False
+    if allow_toggle and word == "toggle":
+        return "toggle"
+    return None
+
+
 def list_devices():
     print("MIDI inputs:")
     try:
@@ -152,24 +182,26 @@ def console_loop(engine):
                 engine.set_chorus_depth(float(parts[1]))
             elif cmd == "delaytime":
                 engine.set_delay_time(min(max(float(parts[1]), 200.0), 4000.0))
-            elif cmd == "pingpong":
-                engine.set_delay_pingpong(parts[1].lower() == "on")
+            elif cmd in ("pingpong", "square", "oct1", "oct2"):
+                on = parse_on_off(parts[1]) if len(parts) > 1 else None
+                if on is None:
+                    print("usage: %s <on|off>" % cmd)
+                elif cmd == "pingpong":
+                    engine.set_delay_pingpong(on)
+                elif cmd == "square":
+                    engine.set_osc1_square(on)
+                elif cmd == "oct1":
+                    engine.set_osc1_octave_down(on)
+                else:
+                    engine.set_osc2_octave_up(on)
             elif cmd == "reverbamt":
                 engine.set_reverb_amount(float(parts[1]))
             elif cmd == "crush":
                 engine.set_crush_amount(float(parts[1]))
-            elif cmd == "square":
-                engine.set_osc1_square(parts[1].lower() == "on")
             elif cmd == "pwm1":
                 engine.set_osc1_pwm(float(parts[1]))
             elif cmd == "pwm2":
                 engine.set_osc2_pwm(float(parts[1]))
-            elif cmd in ("oct1", "oct2"):
-                on = parts[1].lower() == "on"
-                if cmd == "oct1":
-                    engine.set_osc1_octave_down(on)
-                else:
-                    engine.set_osc2_octave_up(on)
             elif cmd == "lpf":
                 engine.set_lpf_cutoff(float(parts[1]))
             elif cmd == "lres":
@@ -178,11 +210,13 @@ def console_loop(engine):
                 engine.set_lpf_mode(parts[1].lower())
             elif cmd == "fx":
                 name = parts[1].lower()
-                action = parts[2].lower() if len(parts) > 2 else "toggle"
-                if action == "toggle":
+                action = parse_on_off(parts[2], allow_toggle=True) if len(parts) > 2 else "toggle"
+                if action is None:
+                    print("usage: fx <chorus|delay|reverb|bitcrush> <on|off|toggle>")
+                elif action == "toggle":
                     engine.toggle_effect(name)
                 else:
-                    engine.set_effect(name, action == "on")
+                    engine.set_effect(name, action)
             else:
                 print("unknown command")
         except (IndexError, ValueError):
@@ -285,9 +319,10 @@ def main(argv=None):
         print("MIDI unavailable (%s); running without MIDI input" % exc)
 
     stream = None
+    cb_state = CallbackState()
 
     def callback(outdata, frames, time_info, status):
-        copy_block_to_output(outdata, engine.render(frames))
+        render_into(outdata, engine, frames, cb_state)
 
     try:
         stream, choice = open_output_stream(sd, choice, args, samplerate, callback)

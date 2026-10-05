@@ -39,8 +39,9 @@ def _interp_read(buf, idx, n, delay):
     size = len(buf)
     pos = (idx + np.arange(n)) - delay
     pos = np.where(pos < 0.0, pos + size, pos)
-    i0 = pos.astype(np.int64)
-    frac = pos - i0
+    whole = np.floor(pos)
+    frac = pos - whole
+    i0 = whole.astype(np.int64) % size
     i1 = i0 + 1
     i1 = np.where(i1 >= size, 0, i1)
     return buf[i0] * (1.0 - frac) + buf[i1] * frac
