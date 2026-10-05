@@ -52,13 +52,13 @@ def test_continuous_control_writes_registry(registry):
 
 
 def test_choice_control_writes_and_refreshes(registry):
-    ctl = ParamControl(registry, registry["osc1_waveform"])
+    ctl = ParamControl(registry, registry["mod_mode"])
     assert isinstance(ctl.editor, QComboBox)
-    registry.set("osc1_waveform", "saw")
+    registry.set("mod_mode", "am")
     ctl.refresh()
-    assert ctl.editor.currentText() == "saw"
-    ctl.editor.textActivated.emit("square")
-    assert registry.get("osc1_waveform") == "square"
+    assert ctl.editor.currentText() == "am"
+    ctl.editor.textActivated.emit("ring")
+    assert registry.get("mod_mode") == "ring"
 
 
 def test_toggle_control(registry):

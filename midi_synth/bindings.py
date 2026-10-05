@@ -113,8 +113,6 @@ _DEFAULT_CCS = (
     (21, "fx_delay"),
     (22, "fx_reverb"),
     (23, "fx_bitcrush"),
-    (24, "osc1_waveform"),
-    (25, "osc2_waveform"),
     (26, "detune2_semitones"),
     (27, "detune2_cents"),
     (28, "osc2_level"),

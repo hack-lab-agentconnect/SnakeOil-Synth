@@ -61,7 +61,5 @@ class MidiInput:
                 self.router.handle_cc(msg.channel, msg.control, msg.value)
             elif msg.type == "pitchwheel":
                 self.engine.set_pitch_bend(msg.pitch / 8192.0)
-            elif msg.type == "program_change":
-                self.registry.apply_midi("osc1_waveform", msg.program * 2)
         except Exception:
             traceback.print_exc(file=sys.stderr)

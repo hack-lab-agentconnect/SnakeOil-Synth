@@ -2,7 +2,9 @@ SAMPLE_RATE = 44100
 BLOCK_SIZE = 256
 MAX_VOICES = 12
 
-WAVEFORMS = ("sine", "square", "saw", "triangle")
+MIN_DUTY = 0.02
+DEFAULT_DUTY = 0.5
+LAYER_GAIN = 0.6
 
 MODES = ("off", "fm", "am", "ring", "sync")
 DEFAULT_MODE = "fm"

@@ -16,6 +16,7 @@ from .config import (
     CENTS_MIN,
     CENTS_MAX,
     LPF_MODES,
+    DEFAULT_DUTY,
     DEFAULT_LPF_MODE,
 )
 from .filters import LowPass, LPF_MIN_HZ, LPF_MAX_HZ, lpf_coefficients
@@ -33,10 +34,11 @@ class SynthEngine:
         self.effects = EffectChain(sr)
         self.master_lpf = LowPass(sr)
         self.params = {
-            "osc1_waveform": "sine",
-            "osc2_waveform": "sine",
             "osc1_level": 1.0,
             "osc2_level": 0.0,
+            "osc1_square": False,
+            "osc1_pwm": DEFAULT_DUTY,
+            "osc2_pwm": DEFAULT_DUTY,
             "mod_mode": DEFAULT_MODE,
             "fm_depth": 0.0,
             "mod_index": 0.0,
@@ -53,28 +55,22 @@ class SynthEngine:
             "lpf_coeffs": None,
         }
         self._order = 0
-        self._refresh_oscillators()
-
-    def _refresh_oscillators(self):
-        for v in self.voices:
-            v.osc1.set_waveform(self.params["osc1_waveform"])
-            v.osc2.set_waveform(self.params["osc2_waveform"])
 
     def _refresh_derived(self):
         self.params["mod_index"] = self.params["fm_depth"] * FM_INDEX_MAX
         self.params["pitch_ratio"] = 2.0 ** (self.params["pitch_bend"] / 12.0)
 
-    def set_osc1_waveform(self, waveform):
+    def set_osc1_square(self, on):
         with self.lock:
-            self.params["osc1_waveform"] = waveform
-            for v in self.voices:
-                v.osc1.set_waveform(waveform)
+            self.params["osc1_square"] = bool(on)
 
-    def set_osc2_waveform(self, waveform):
+    def set_osc1_pwm(self, duty):
         with self.lock:
-            self.params["osc2_waveform"] = waveform
-            for v in self.voices:
-                v.osc2.set_waveform(waveform)
+            self.params["osc1_pwm"] = min(max(float(duty), 0.0), 0.5)
+
+    def set_osc2_pwm(self, duty):
+        with self.lock:
+            self.params["osc2_pwm"] = min(max(float(duty), 0.0), 0.5)
 
     def set_osc_levels(self, osc1_level, osc2_level):
         with self.lock:
@@ -227,10 +223,11 @@ class SynthEngine:
                 for name in self.effects.order
             }
             return {
-                "osc1_waveform": self.params["osc1_waveform"],
-                "osc2_waveform": self.params["osc2_waveform"],
                 "osc1_level": self.params["osc1_level"],
+                "osc1_square": self.params["osc1_square"],
+                "osc1_pwm": self.params["osc1_pwm"],
                 "osc2_level": self.params["osc2_level"],
+                "osc2_pwm": self.params["osc2_pwm"],
                 "mod_mode": self.params["mod_mode"],
                 "fm_depth": self.params["fm_depth"],
                 "detune2_semitones": self.params["detune2_semitones"],

@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 
 from midi_synth.config import (
-    SAMPLE_RATE, BLOCK_SIZE, MAX_VOICES, WAVEFORMS, LPF_MODES, DEFAULT_LPF_MODE,
+    SAMPLE_RATE, BLOCK_SIZE, MAX_VOICES, LPF_MODES, DEFAULT_LPF_MODE,
 )
 from midi_synth.bindings import default_profile
 from midi_synth.engine import SynthEngine
@@ -74,7 +74,8 @@ def list_devices():
 
 HELP_TEXT = """commands:
   fx <chorus|delay|reverb|bitcrush> <on|off|toggle>
-  wave1/wave2 <sine|square|saw|triangle>
+  square <on|off>            osc 1 square layer over the saw
+  pwm1/pwm2 <0-0.5>          pulse width (osc 1 square layer / osc 2); 0.5 = square
   level1/level2 <0-1>        oscillator mix level (osc2 starts at 0)
   mode <off|fm|am|ring|sync> how osc1 modulates osc2
   mod <0-1>                  modulation amount (alias: fm)
@@ -128,14 +129,12 @@ def console_loop(engine):
                 engine.set_detune2(engine.params["detune2_semitones"], float(parts[1]))
             elif cmd == "gain":
                 engine.set_master_gain(float(parts[1]))
-            elif cmd in ("wave1", "wave2"):
-                wf = parts[1].lower()
-                if wf not in WAVEFORMS:
-                    print("unknown waveform")
-                elif cmd == "wave1":
-                    engine.set_osc1_waveform(wf)
-                else:
-                    engine.set_osc2_waveform(wf)
+            elif cmd == "square":
+                engine.set_osc1_square(parts[1].lower() == "on")
+            elif cmd == "pwm1":
+                engine.set_osc1_pwm(float(parts[1]))
+            elif cmd == "pwm2":
+                engine.set_osc2_pwm(float(parts[1]))
             elif cmd in ("oct1", "oct2"):
                 on = parts[1].lower() == "on"
                 if cmd == "oct1":

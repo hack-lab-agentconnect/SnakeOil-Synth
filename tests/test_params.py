@@ -27,12 +27,9 @@ def test_from_midi_continuous_endpoints(rig):
 
 def test_from_midi_choice_buckets(rig):
     _, reg = rig
-    assert [reg.from_midi("osc1_waveform", v) for v in (0, 31, 32, 64, 96, 127)] == [
-        "sine", "sine", "square", "saw", "triangle", "triangle",
+    assert [reg.from_midi("mod_mode", v) for v in (0, 25, 26, 64, 102, 127)] == [
+        "off", "off", "fm", "am", "ring", "sync",
     ]
-    assert reg.from_midi("mod_mode", 0) == "off"
-    assert reg.from_midi("mod_mode", 127) == "sync"
-    assert reg.from_midi("osc1_waveform", 254) == "triangle"  # program-change style overflow
 
 
 def test_toggle_fires_once_per_press(rig):
@@ -51,7 +48,7 @@ def test_toggle_fires_once_per_press(rig):
 def test_set_choice_rejects_unknown_value(rig):
     _, reg = rig
     with pytest.raises(ValueError):
-        reg.set("osc1_waveform", "wobble")
+        reg.set("mod_mode", "wobble")
 
 
 def test_mod_mode_change_also_notifies_fm_depth(rig):
@@ -74,7 +71,7 @@ def test_cents_setter_preserves_semitones(rig):
 def test_ids_cover_every_group(rig):
     _, reg = rig
     assert set(reg.ids()) >= {
-        "osc1_waveform", "osc1_level", "osc2_waveform", "osc2_level",
+        "osc1_level", "osc1_square", "osc1_pwm", "osc2_level", "osc2_pwm",
         "detune2_semitones", "detune2_cents", "mod_mode", "fm_depth",
         "master_gain", "fx_chorus", "fx_delay", "fx_reverb", "fx_bitcrush",
     }
@@ -98,3 +95,33 @@ def test_lpf_params_write_engine(rig):
     assert engine.params["lpf_mode"] == "master"
     reg.set("lpf_master", False)
     assert engine.params["lpf_mode"] == "voice"
+
+
+def test_waveform_params_are_gone(rig):
+    _, reg = rig
+    assert "osc1_waveform" not in reg
+    assert "osc2_waveform" not in reg
+
+
+def test_pwm_and_square_params_defaults_and_ranges(rig):
+    engine, reg = rig
+    for pid in ("osc1_pwm", "osc2_pwm"):
+        assert reg[pid].minimum == 0.0 and reg[pid].maximum == 0.5
+        assert reg.get(pid) == 0.5
+    assert reg["osc1_pwm"].group == "Oscillator 1"
+    assert reg["osc2_pwm"].group == "Oscillator 2"
+    assert reg["osc1_square"].kind == "toggle"
+    assert reg["osc1_square"].group == "Oscillator 1"
+    assert reg.get("osc1_square") is False
+
+
+def test_pwm_and_square_params_reach_engine(rig):
+    engine, reg = rig
+    reg.set("osc1_square", True)
+    reg.set("osc1_pwm", 0.25)
+    reg.set("osc2_pwm", 9.0)
+    assert engine.params["osc1_square"] is True
+    assert engine.params["osc1_pwm"] == 0.25
+    assert engine.params["osc2_pwm"] == 0.5
+    assert reg.from_midi("osc1_pwm", 127) == 0.5
+    assert reg.from_midi("osc2_pwm", 0) == 0.0

@@ -1,6 +1,6 @@
 import numpy as np
 
-from .config import WAVEFORMS
+from .config import DEFAULT_DUTY, LAYER_GAIN, MIN_DUTY
 
 
 def _poly_blep(t, dt):
@@ -17,35 +17,40 @@ def _poly_blep(t, dt):
     return out
 
 
+def saw_wave(t, inc):
+    return 2.0 * t - 1.0 - _poly_blep(t, inc)
+
+
+def pulse_wave(t, inc, duty):
+    duty = min(max(duty, MIN_DUTY), 0.5)
+    s = np.where(t < duty, 1.0, -1.0)
+    s = s + _poly_blep(t, inc) - _poly_blep(np.mod(t - duty, 1.0), inc)
+    return (s - (2.0 * duty - 1.0)) / (2.0 - 2.0 * duty)
+
+
+_WAVEFORMS = ("saw", "square")
+
+
 class Oscillator:
-    def __init__(self, sr, waveform="sine"):
-        if waveform not in WAVEFORMS:
+    def __init__(self, sr, waveform="saw"):
+        if waveform not in _WAVEFORMS:
             raise ValueError("unknown waveform: %r" % (waveform,))
         self.sr = sr
         self.waveform = waveform
         self.phase = 0.0
+        self.duty = DEFAULT_DUTY
+        self.layer_square = False
 
     def reset(self):
         self.phase = 0.0
 
-    def set_waveform(self, waveform):
-        if waveform not in WAVEFORMS:
-            raise ValueError("unknown waveform: %r" % (waveform,))
-        self.waveform = waveform
-
     def _shape(self, t, inc):
-        wf = self.waveform
-        if wf == "sine":
-            return np.sin(2.0 * np.pi * t)
-        if wf == "saw":
-            return 2.0 * t - 1.0 - _poly_blep(t, inc)
-        if wf == "square":
-            s = np.where(t < 0.5, 1.0, -1.0)
-            s = s + _poly_blep(t, inc) - _poly_blep(np.mod(t + 0.5, 1.0), inc)
-            return s
-        if wf == "triangle":
-            return 4.0 * np.abs(t - 0.5) - 1.0
-        return np.sin(2.0 * np.pi * t)
+        if self.waveform == "saw":
+            saw = saw_wave(t, inc)
+            if self.layer_square:
+                return LAYER_GAIN * (saw + pulse_wave(t, inc, self.duty))
+            return saw
+        return pulse_wave(t, inc, self.duty)
 
     def advance(self, freq, n):
         inc = freq / self.sr

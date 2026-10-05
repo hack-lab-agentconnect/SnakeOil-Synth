@@ -2,7 +2,6 @@ from dataclasses import dataclass
 from typing import Any, Callable, Tuple
 
 from .config import (
-    WAVEFORMS,
     MODES,
     SEMITONE_MIN,
     SEMITONE_MAX,
@@ -124,17 +123,18 @@ def build_registry(engine):
         )
 
     params = [
-        Param(id="osc1_waveform", label="Waveform", group="Oscillator 1", kind=CHOICE,
-              choices=WAVEFORMS, get=lambda: p["osc1_waveform"],
-              set=engine.set_osc1_waveform),
         Param(id="osc1_level", label="Level", group="Oscillator 1", kind=CONTINUOUS,
               get=lambda: p["osc1_level"], set=lambda v: engine.set_osc_level(1, v)),
+        Param(id="osc1_square", label="Square layer", group="Oscillator 1", kind=TOGGLE,
+              get=lambda: p["osc1_square"], set=engine.set_osc1_square,
+              tooltip="Layer a square wave over the saw."),
+        Param(id="osc1_pwm", label="PWM", group="Oscillator 1", kind=CONTINUOUS,
+              minimum=0.0, maximum=0.5, fmt="{:.2f}",
+              get=lambda: p["osc1_pwm"], set=engine.set_osc1_pwm,
+              tooltip="Pulse width of the square layer. 0.50 = plain square."),
         Param(id="osc1_octave", label="Octave down", group="Oscillator 1", kind=TOGGLE,
               get=lambda: p["osc1_octave_down"], set=engine.set_osc1_octave_down,
               tooltip="Play Oscillator 1 one octave below the note."),
-        Param(id="osc2_waveform", label="Waveform", group="Oscillator 2", kind=CHOICE,
-              choices=WAVEFORMS, get=lambda: p["osc2_waveform"],
-              set=engine.set_osc2_waveform),
         Param(id="osc2_level", label="Level", group="Oscillator 2", kind=CONTINUOUS,
               get=lambda: p["osc2_level"], set=lambda v: engine.set_osc_level(2, v)),
         Param(id="detune2_semitones", label="Coarse", group="Oscillator 2",
@@ -145,6 +145,10 @@ def build_registry(engine):
               kind=CONTINUOUS, minimum=CENTS_MIN, maximum=CENTS_MAX,
               fmt="{:+.2f} ct", get=lambda: p["detune2_cents"],
               set=lambda v: engine.set_detune2(p["detune2_semitones"], v)),
+        Param(id="osc2_pwm", label="PWM", group="Oscillator 2", kind=CONTINUOUS,
+              minimum=0.0, maximum=0.5, fmt="{:.2f}",
+              get=lambda: p["osc2_pwm"], set=engine.set_osc2_pwm,
+              tooltip="Pulse width of the square. 0.50 = plain square."),
         Param(id="osc2_octave", label="Octave up", group="Oscillator 2", kind=TOGGLE,
               get=lambda: p["osc2_octave_up"], set=engine.set_osc2_octave_up,
               tooltip="Play Oscillator 2 one octave above the note."),

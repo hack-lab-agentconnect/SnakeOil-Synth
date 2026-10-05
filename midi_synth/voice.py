@@ -76,8 +76,8 @@ class Voice:
         self.sr = sr
         from .oscillators import Oscillator
 
-        self.osc1 = Oscillator(sr, "sine")
-        self.osc2 = Oscillator(sr, "sine")
+        self.osc1 = Oscillator(sr, "saw")
+        self.osc2 = Oscillator(sr, "square")
         self.env = Envelope(sr)
         self.lpf = LowPass(sr)
         self.note = -1
@@ -106,6 +106,9 @@ class Voice:
         self.env.note_off()
 
     def render(self, n, params):
+        self.osc1.layer_square = params["osc1_square"]
+        self.osc1.duty = params["osc1_pwm"]
+        self.osc2.duty = params["osc2_pwm"]
         freq = self.freq * params["pitch_ratio"]
         f2 = freq * semitones_to_ratio(
             params["detune2_semitones"], params["detune2_cents"]

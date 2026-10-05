@@ -10,7 +10,7 @@ toggleable effects chain.
 
 - MIDI input from **all connected input ports** (or a named port / single channel).
 - Polyphony up to **12 simultaneous notes**.
-- Waveforms: **sine, square, saw, triangle** (square/saw are band-limited with PolyBLEP).
+- Oscillators (band-limited with PolyBLEP): **osc 1 is a saw** with an optional **square layer**; **osc 2 is a square**. Both squares have **PWM** (pulse width 0-0.5, where 0.5 is a plain square).
 - **Second oscillator is phase-modulated (FM) by the first oscillator's output.**
 - Second oscillator **coarse tuning −12..+12 semitones** plus **fine tuning ±0.5 cents**.
 - **Octave switches:** osc 1 can play one octave down, osc 2 one octave up (relative to the played note, on top of its tuning).
@@ -98,7 +98,9 @@ An interactive console starts alongside the audio. Type `help`. Commands:
 
 ```
 fx <chorus|delay|reverb|bitcrush> <on|off|toggle>
-wave1/wave2 <sine|square|saw|triangle>
+square <on|off>     # oscillator 1 square layer over the saw
+pwm1 <0-0.5>        # oscillator 1 square-layer pulse width (0.5 = square)
+pwm2 <0-0.5>        # oscillator 2 pulse width (0.5 = square)
 level1/level2 <0-1>  # oscillator mix level (osc2 starts at 0)
 mode <off|fm|am|ring|sync>  # how osc1 modulates osc2
 mod <0-1>           # modulation amount (alias: fm)
@@ -143,8 +145,6 @@ This is the seeded `Default` profile; it is now editable via MIDI learn.
 | CC 21 | toggle Delay |
 | CC 22 | toggle Reverb |
 | CC 23 | toggle Bitcrush |
-| CC 24 | osc 1 waveform (0-31 sine, 32-63 square, 64-95 saw, 96-127 triangle) |
-| CC 25 | osc 2 waveform (same zones) |
 | CC 26 | osc 2 coarse tune (−12..+12 semitones) |
 | CC 27 | osc 2 fine tune (−0.5..+0.5 cents) |
 | CC 28 | osc 2 level (0..1) |
@@ -153,6 +153,8 @@ This is the seeded `Default` profile; it is now editable via MIDI learn.
 | CC 71 | low-pass resonance |
 | CC 74 | low-pass cutoff (log scale) |
 | Pitch wheel | pitch bend (±2 semitones) |
+
+The square layer and PWM controls have no default CC; assign them with MIDI learn.
 
 Toggle CCs act on press (value ≥ 64) with edge detection. Profiles saved before the
 low-pass filter was added do not have CC 71 and CC 74; use the toolbar's Reset to get them.
@@ -169,7 +171,7 @@ note ─▶ ADSR ─▶ osc1 ──┬──────────────
 ## Offline render (no audio device)
 
 ```bash
-python render_demo.py --out demo.wav --effects reverb,delay --wave1 saw --mode ring --fm 0.7 --level2 0.6
+python render_demo.py --out demo.wav --effects reverb,delay --square-layer --pwm1 0.3 --mode ring --fm 0.7 --level2 0.6
 ```
 
 Renders a 12-note chord to a WAV file using only NumPy and the standard library.
