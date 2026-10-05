@@ -1,5 +1,6 @@
-"""Golden tests: the vectorised effects must match the frozen per-sample
-reference implementations (tests/reference_dsp.py) block for block."""
+"""Golden tests: channel 0 of the vectorised stereo effects must match the
+frozen per-sample mono reference implementations (tests/reference_dsp.py)
+block for block. Channel 1 carries unrelated audio to catch any crosstalk."""
 import numpy as np
 import pytest
 
@@ -30,8 +31,13 @@ def saw_bursts(total, sr=48000, freq=220.0, period=3000):
 SIGNALS = {"noise": noise, "saw_burst": saw_bursts}
 
 
+def stereo(x):
+    """Left = x, right = a different signal derived from x."""
+    return np.stack([x, -0.7 * x[::-1]])
+
+
 def run_blocks(new, ref, signal, block, nblocks=10, between=None):
-    """Feed identical blocks to both effects; assert every block matches.
+    """Feed blocks to both effects; assert channel 0 matches the mono ref.
 
     `between(i, new, ref)` is called before block i to change parameters.
     """
@@ -39,10 +45,10 @@ def run_blocks(new, ref, signal, block, nblocks=10, between=None):
         if between is not None:
             between(i, new, ref)
         x = signal[i * block:(i + 1) * block]
-        a = new.process(x.copy())
+        a = new.process(stereo(x))
         b = ref.process(x.copy())
-        assert a.shape == b.shape
-        assert np.max(np.abs(a - b)) <= TOL, "block %d differs" % i
+        assert a.shape == (2, len(x))
+        assert np.max(np.abs(a[0] - b)) <= TOL, "block %d differs" % i
 
 
 def apply_both(new, ref, **attrs):
@@ -71,7 +77,7 @@ def test_delay_matches_reference(kind, block, time_ms):
     sig = make_signal(kind, block * nblocks, sr)
     run_blocks(new, ref, sig, block, nblocks)
     assert new.idx == ref.idx
-    assert new.filter == pytest.approx(ref.filter, abs=TOL)
+    assert new.filter[0] == pytest.approx(ref.filter, abs=TOL)
 
 
 @pytest.mark.parametrize("kind", ["noise", "saw_burst"])
@@ -83,7 +89,7 @@ def test_delay_damping_and_feedback(kind, damp):
     new.set_time_ms(5.0)
     ref.set_time_ms(5.0)
     run_blocks(new, ref, make_signal(kind, 256 * 40, sr), 256, 40)
-    assert new.filter == pytest.approx(ref.filter, abs=TOL)
+    assert new.filter[0] == pytest.approx(ref.filter, abs=TOL)
 
 
 @pytest.mark.parametrize("kind", ["noise", "saw_burst"])
@@ -98,7 +104,7 @@ def test_delay_4s_wraps_ring_buffer(kind, block):
     apply_both(new, ref, feedback=0.6)
     run_blocks(new, ref, sig, block, nblocks)
     assert new.idx == ref.idx
-    assert np.array_equal(new.buf, ref.buf) or np.max(np.abs(new.buf - ref.buf)) <= TOL
+    assert np.max(np.abs(new.buf[0] - ref.buf)) <= TOL
 
 
 def test_delay_time_changes_between_blocks():
@@ -126,7 +132,7 @@ def test_delay_enable_disable_between_blocks():
 
 def test_delay_disabled_returns_input_untouched():
     d = Delay(48000, enabled=False)
-    x = noise(64)
+    x = stereo(noise(64))
     assert d.process(x) is x
 
 
@@ -139,7 +145,7 @@ def test_delay_shortest_delay_with_block_larger_than_delay():
     ref.set_time_ms(1.0)
     apply_both(new, ref, feedback=0.7)
     run_blocks(new, ref, noise(700 * 8), 700, 8)
-    assert new.filter == pytest.approx(ref.filter, abs=TOL)
+    assert new.filter[0] == pytest.approx(ref.filter, abs=TOL)
 
 
 # --------------------------------------------------------------- Chorus
@@ -210,7 +216,7 @@ def test_bitcrusher_downsample(kind, block, down):
     nblocks = 400 if block == 1 else 40
     run_blocks(new, ref, make_signal(kind, block * nblocks, 48000), block, nblocks)
     assert new.counter == ref.counter
-    assert new.hold == ref.hold
+    assert new.hold[0] == ref.hold
 
 
 @pytest.mark.parametrize("kind", ["noise", "saw_burst"])
@@ -222,7 +228,7 @@ def test_bitcrusher_bits(kind, block, bits):
     nblocks = 200 if block == 1 else 12
     run_blocks(new, ref, make_signal(kind, block * nblocks, 48000), block, nblocks)
     assert new.counter == ref.counter
-    assert new.hold == ref.hold
+    assert new.hold[0] == ref.hold
 
 
 @pytest.mark.parametrize("kind", ["noise", "saw_burst"])
@@ -234,8 +240,8 @@ def test_bitcrusher_params_change_between_blocks(kind):
         new.set_amount(a)
         ref.set_amount(a)
         x = make_signal(kind, 300, 48000)[:b]
-        assert np.max(np.abs(new.process(x.copy()) - ref.process(x.copy()))) <= TOL
-        assert new.counter == ref.counter and new.hold == ref.hold
+        assert np.max(np.abs(new.process(stereo(x))[0] - ref.process(x.copy()))) <= TOL
+        assert new.counter == ref.counter and new.hold[0] == ref.hold
 
 
 def test_bitcrusher_counter_longer_than_block():
@@ -247,8 +253,8 @@ def test_bitcrusher_counter_longer_than_block():
     for b in [1, 1, 7, 3, 1, 5, 2, 7, 7, 1, 20, 4]:
         x = sig[pos:pos + b]
         pos += b
-        assert np.max(np.abs(new.process(x.copy()) - ref.process(x.copy()))) <= TOL
-        assert new.counter == ref.counter and new.hold == ref.hold
+        assert np.max(np.abs(new.process(stereo(x))[0] - ref.process(x.copy()))) <= TOL
+        assert new.counter == ref.counter and new.hold[0] == ref.hold
 
 
 def test_bitcrusher_enable_disable_between_blocks():

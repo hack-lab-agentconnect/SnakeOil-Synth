@@ -124,6 +124,65 @@ class RefDelay:
         return out
 
 
+class RefPingPongDelay:
+    """Per-sample stereo ping-pong delay: the input is summed to mono into the
+    left buffer, and each channel's damped echo feeds the opposite buffer."""
+
+    def __init__(self, sr, enabled=False, mix=0.35, time_ms=300.0, feedback=0.35,
+                 damp=0.25):
+        self.sr = sr
+        self.enabled = enabled
+        self.mix = mix
+        self.feedback = feedback
+        self.damp = damp
+        self.time_ms = time_ms
+        self.time = time_ms * sr / 1000.0
+        maxlen = int(sr * 4.0) + 4
+        self.bufs = [np.zeros(maxlen, dtype=np.float64) for _ in range(2)]
+        self.idx = 0
+        self.filters = [0.0, 0.0]
+
+    def set_time_ms(self, time_ms):
+        self.time_ms = min(max(float(time_ms), 1.0), 4000.0)
+        self.time = self.time_ms * self.sr / 1000.0
+
+    def _read(self, buf, idx):
+        size = len(buf)
+        read = idx - self.time
+        while read < 0.0:
+            read += size
+        i0 = int(read)
+        frac = read - i0
+        i1 = i0 + 1
+        if i1 >= size:
+            i1 = 0
+        return buf[i0] * (1.0 - frac) + buf[i1] * frac
+
+    def process(self, x):
+        if not self.enabled:
+            return x
+        n = x.shape[1]
+        out = np.empty((2, n), dtype=np.float64)
+        size = len(self.bufs[0])
+        damp = self.damp
+        fb = self.feedback
+        idx = self.idx
+        for i in range(n):
+            wet = [self._read(self.bufs[c], idx) for c in range(2)]
+            for c in range(2):
+                self.filters[c] = wet[c] * (1.0 - damp) + self.filters[c] * damp
+            m = 0.5 * (x[0, i] + x[1, i])
+            self.bufs[0][idx] = m + self.filters[1] * fb
+            self.bufs[1][idx] = self.filters[0] * fb
+            for c in range(2):
+                out[c, i] = x[c, i] + wet[c] * self.mix
+            idx += 1
+            if idx >= size:
+                idx = 0
+        self.idx = idx
+        return out
+
+
 class _RefComb:
     def __init__(self, delay, feedback=0.84, damp=0.2):
         self.buf = np.zeros(int(delay), dtype=np.float64)

@@ -230,7 +230,9 @@ class SynthEngine:
             if coeffs is not None and params["lpf_mode"] == "master":
                 mix = self.master_lpf.process(mix, coeffs)
             if apply_effects:
-                mix = self.effects.process(mix)
+                # Temporary shim (removed in the stereo output task): run the
+                # mono mix through the stereo chain and keep the left channel.
+                mix = np.array(self.effects.process(np.vstack([mix, mix]))[0])
             mix *= params["master_gain"]
             return np.tanh(mix).astype(np.float32)
 

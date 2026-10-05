@@ -24,7 +24,7 @@ def test_chorus_depth_changes_output():
     for amount in (0.0, 1.0):
         c = Chorus(sr, enabled=True)
         c.set_depth(amount)
-        outs.append(c.process(x))
+        outs.append(c.process(np.stack([x, x]))[0])
     assert np.all(np.isfinite(outs[0])) and np.all(np.isfinite(outs[1]))
     assert not np.allclose(outs[0], outs[1])
 
@@ -33,7 +33,8 @@ def test_chorus_buffer_fits_max_depth():
     sr = 44100
     c = Chorus(sr, enabled=True)
     c.set_depth(1.0)
-    out = c.process(np.random.default_rng(0).uniform(-1, 1, sr))
+    x = np.random.default_rng(0).uniform(-1, 1, sr)
+    out = c.process(np.stack([x, x]))
     assert np.all(np.isfinite(out))
 
 
@@ -43,7 +44,7 @@ def _impulse_echo_index(time_ms, n):
     assert d.time_ms == time_ms
     x = np.zeros(n)
     x[0] = 1.0
-    out = d.process(x) - x
+    out = d.process(np.stack([x, x]))[0] - x
     return int(np.argmax(np.abs(out))), out
 
 
@@ -65,7 +66,7 @@ def test_reverb_amount():
     def run(amount):
         r = Reverb(44100, enabled=True)
         r.set_amount(amount)
-        return r.process(x)
+        return r.process(np.stack([x, x]))[0]
 
     assert np.array_equal(run(0.0), x)
     e = lambda y: float(np.sum((y - x) ** 2))
@@ -83,15 +84,15 @@ def test_bitcrusher_amount():
     b.set_amount(0.5)
     assert (b.bits, b.downsample) == (8, 4)
     x = np.linspace(0.0, 1.0, 64)
-    out = b.process(x)
+    out = b.process(np.stack([x, x]))[0]
     for g in range(0, 64, 4):
         assert len(set(out[g:g + 4])) == 1
     b = Bitcrusher(44100, enabled=True)
     b.set_amount(1.0)
-    assert len(set(np.round(b.process(x), 9))) <= 5
+    assert len(set(np.round(b.process(np.stack([x, x]))[0], 9))) <= 5
     b = Bitcrusher(44100, enabled=True)
     b.set_amount(0.0)
-    assert np.max(np.abs(b.process(x) - x)) < 1e-3
+    assert np.max(np.abs(b.process(np.stack([x, x]))[0] - x)) < 1e-3
     b.set_amount(9)
     assert b.amount == 1.0
 
