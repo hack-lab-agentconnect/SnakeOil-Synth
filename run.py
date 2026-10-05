@@ -1,10 +1,14 @@
 import argparse
 import sys
 import time
+from pathlib import Path
 
 from midi_synth.config import SAMPLE_RATE, BLOCK_SIZE, MAX_VOICES, WAVEFORMS
 from midi_synth.engine import SynthEngine
 from midi_synth.midi_input import MidiInput
+from midi_synth.midi_router import MidiRouter
+from midi_synth.params import build_registry
+from midi_synth.profiles import ProfileStore, default_config_dir
 
 
 def parse_args(argv):
@@ -31,6 +35,11 @@ def parse_args(argv):
                    help="do not opt in to the bundled ASIO-enabled PortAudio DLL")
     p.add_argument("--channels", type=int, default=2, help="output channels")
     p.add_argument("--no-console", action="store_true", help="disable interactive command console")
+    p.add_argument("--no-gui", action="store_true", help="run the console only, no window")
+    p.add_argument("--profile", default=None, metavar="NAME",
+                   help="MIDI binding profile to load (default: last used)")
+    p.add_argument("--config-dir", default=None, metavar="PATH",
+                   help="where profiles are stored (default: per-user config dir)")
     return p.parse_args(argv)
 
 
@@ -159,6 +168,16 @@ def open_output_stream(sd, choice, args, samplerate, callback):
         raise
 
 
+def launch_gui(engine, registry, router, store, ports):
+    try:
+        from midi_synth.gui.app import run_gui
+    except ImportError as exc:
+        print("GUI unavailable (%s); using the console. Install it with: pip install PySide6" % exc)
+        return False
+    run_gui(engine, registry, router, store, ports)
+    return True
+
+
 def main(argv=None):
     args = parse_args(argv if argv is not None else sys.argv[1:])
 
@@ -193,7 +212,15 @@ def main(argv=None):
     engine = SynthEngine(sr=samplerate, block_size=args.blocksize,
                          max_voices=args.voices)
 
-    midi = MidiInput(engine, ports=args.input, channel=args.channel)
+    store = ProfileStore(Path(args.config_dir) if args.config_dir else default_config_dir())
+    profile = store.open_active(args.profile)
+    for warning in store.warnings:
+        print("Profiles: %s" % warning)
+    registry = build_registry(engine)
+    router = MidiRouter(registry, profile)
+    router.on_profile_changed = store.save
+    midi = MidiInput(engine, ports=args.input, channel=args.channel, router=router)
+    opened = []
     try:
         opened = midi.start()
         print("MIDI inputs: %s" % ", ".join(opened))
@@ -228,7 +255,9 @@ def main(argv=None):
         pass
     print("Playing. Press Ctrl+C to stop.")
     try:
-        if args.no_console:
+        if not args.no_gui and launch_gui(engine, registry, router, store, opened):
+            pass
+        elif args.no_console:
             while True:
                 time.sleep(0.2)
         else:
