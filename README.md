@@ -176,6 +176,15 @@ note ─▶ ADSR ─▶ osc1 ──┬──────────────
 
 `osc2` pitch = note pitch × 2^((semitones + cents/100)/12).
 
+## Performance
+
+The effects, filter and envelope process whole blocks with numpy / SciPy (`scipy.signal.lfilter`)
+rather than sample by sample. `python bench.py` prints the time per audio block against the
+block budget for 12 voices (defaults, filter placements, each effect, all effects). On the
+development machine (48 kHz, 256-sample blocks) all four effects plus 12 voices use about
+27% of the budget. The optimised code is checked against frozen copies of the original
+implementations in `tests/reference_dsp.py`.
+
 ## Offline render (no audio device)
 
 ```bash
