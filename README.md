@@ -42,6 +42,21 @@ pip install -r requirements.txt       # includes PySide6 for the GUI
 pip install -r requirements-dev.txt   # also installs test dependencies
 ```
 
+Or install it as a package (`requirements.txt` / `requirements-dev.txt` remain
+the pinned-minimum dependency lists and keep working):
+
+```bash
+pip install .            # installs the package and its dependencies
+pip install -e .[dev]    # editable install plus pytest, for development
+```
+
+This provides two console scripts, `midi-synth` (same as `python run.py`) and
+`midi-synth-render` (same as `python render_demo.py`).
+
+A GitHub Actions workflow (`.github/workflows/ci.yml`) runs the test suite on
+Windows and Ubuntu with Python 3.12 for pushes to `main` and for pull requests.
+It could not be run locally, so it is unverified until it has run on GitHub.
+
 On Linux the PortAudio system library is also required:
 
 ```bash
