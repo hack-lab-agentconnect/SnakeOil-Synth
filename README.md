@@ -74,6 +74,23 @@ The window opens by default; use `--no-gui` for the console only.
 - `--profile NAME` starts with a given profile; `--config-dir PATH` uses another
   config directory.
 
+## Patches
+
+A patch is a saved sound: every knob, slider and switch except master volume.
+
+- **GUI:** the second toolbar row has a *Patch* box (choosing one loads it at once) and
+  Save, Save As..., Rename and Delete. A `*` after the name means you changed something
+  since loading or saving. `Init` is the factory sound: it is read-only (Save is
+  disabled, and it cannot be renamed or deleted); use Save As... to keep a variation.
+- **Console:** `patch list`, `patch save <name>`, `patch load <name>`,
+  `patch delete <name>`.
+- **Startup:** `--patch NAME` loads a patch before the window opens; otherwise the last
+  used patch is loaded. An unreadable patch prints a warning and the factory sound is used.
+- **Files:** `patches/<name>.json` in the config directory (next to `profiles/`), plus
+  `patch_settings.json` for the last used patch. Each file holds `{"version", "name",
+  "params"}`. Parameters missing from a file load at their factory value, so older patches
+  keep working when new controls are added; files from a newer version are refused.
+
 ## Amp envelope (ADSR)
 
 The *Envelope* group at the bottom of the window has four vertical sliders that shape

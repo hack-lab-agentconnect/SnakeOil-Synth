@@ -11,6 +11,7 @@ from midi_synth.engine import SynthEngine
 from midi_synth.midi_input import MidiInput
 from midi_synth.midi_router import MidiRouter
 from midi_synth.params import build_registry
+from midi_synth.patches import PatchError, PatchStore, apply as apply_patch, capture
 from midi_synth.profiles import ProfileStore, default_config_dir
 
 
@@ -43,6 +44,8 @@ def parse_args(argv):
     p.add_argument("--no-gui", action="store_true", help="run the console only, no window")
     p.add_argument("--profile", default=None, metavar="NAME",
                    help="MIDI binding profile to load (default: last used)")
+    p.add_argument("--patch", default=None, metavar="NAME",
+                   help="sound patch to load at startup (default: last used)")
     p.add_argument("--config-dir", default=None, metavar="PATH",
                    help="where profiles are stored (default: per-user config dir)")
     return p.parse_args(argv)
@@ -137,13 +140,67 @@ HELP_TEXT = """commands:
   lpfmode <voice|master>     filter placement
   adsr <a> <d> <s> <r>       amp envelope: attack, decay (s), sustain (0-1), release (s)
   gain <0-1.2>               master volume
+  patch list                 list saved sound patches
+  patch save <name>          save the current sound as a patch
+  patch load <name>          load a patch
+  patch delete <name>        delete a patch (Init cannot be deleted)
   alloff                     release all held notes
   status                     show current settings
   help                       show this help
   quit                       exit (Ctrl+C also works)"""
 
 
-def console_loop(engine):
+def load_startup_patch(registry, patch_store, defaults, name=None):
+    """Apply `name` (or the last-used patch) and return warning strings.
+
+    Anything unreadable or missing is reported and the factory sound stays.
+    """
+    warnings = []
+    name = name or patch_store.last_used()
+    if name:
+        try:
+            values = patch_store.load(name)
+        except PatchError as exc:
+            warnings.append("Patch %r not loaded (%s); using factory defaults" % (name, exc))
+        else:
+            warnings += apply_patch(registry, values, defaults)
+            patch_store.set_last_used(name)
+    return warnings
+
+
+def patch_command(parts, registry, patch_store, defaults):
+    usage = "usage: patch list | save <name> | load <name> | delete <name>"
+    if registry is None or patch_store is None:
+        print("patches unavailable")
+        return
+    sub = parts[1].lower() if len(parts) > 1 else ""
+    name = " ".join(parts[2:])
+    try:
+        if sub == "list":
+            for n in patch_store.names():
+                print("  %s" % n)
+            for w in patch_store.warnings:
+                print("  (%s)" % w)
+        elif sub in ("save", "load", "delete") and name:
+            if sub == "save":
+                patch_store.save(name, capture(registry))
+                patch_store.set_last_used(name)
+                print("saved patch %s" % name)
+            elif sub == "load":
+                for w in apply_patch(registry, patch_store.load(name), defaults):
+                    print("warning: %s" % w)
+                patch_store.set_last_used(name)
+                print("loaded patch %s" % name)
+            else:
+                patch_store.delete(name)
+                print("deleted patch %s" % name)
+        else:
+            print(usage)
+    except (PatchError, OSError) as exc:
+        print(exc)
+
+
+def console_loop(engine, registry=None, patch_store=None, patch_defaults=None):
     help_text = HELP_TEXT
     print(help_text)
     while True:
@@ -164,6 +221,8 @@ def console_loop(engine):
             elif cmd == "status":
                 for k, v in engine.status().items():
                     print("  %s: %s" % (k, v))
+            elif cmd == "patch":
+                patch_command(parts, registry, patch_store, patch_defaults)
             elif cmd == "alloff":
                 engine.all_notes_off()
             elif cmd in ("fm", "mod"):
@@ -261,13 +320,15 @@ def open_output_stream(sd, choice, args, samplerate, callback):
         raise
 
 
-def launch_gui(engine, registry, router, store, ports, on_exit=None):
+def launch_gui(engine, registry, router, store, ports, on_exit=None,
+               patch_store=None, patch_defaults=None):
     try:
         from midi_synth.gui.app import run_gui
     except ImportError as exc:
         print("GUI unavailable (%s); using the console. Install it with: pip install PySide6" % exc)
         return False
-    run_gui(engine, registry, router, store, ports, on_exit)
+    run_gui(engine, registry, router, store, ports, on_exit,
+            patch_store=patch_store, patch_defaults=patch_defaults)
     return True
 
 
@@ -317,6 +378,19 @@ def main(argv=None):
     for warning in store.warnings:
         print("Profiles: %s" % warning)
     registry = build_registry(engine)
+    patch_defaults = capture(registry)
+    patch_store = PatchStore(store.directory)
+    try:
+        patch_store.ensure_init(patch_defaults)
+        warnings = load_startup_patch(registry, patch_store, patch_defaults, args.patch)
+    except OSError as exc:
+        print("Patches unavailable (%s); using factory defaults, nothing will be saved" % exc)
+        patch_store = None
+        warnings = []
+    if patch_store is not None:
+        warnings += patch_store.warnings
+    for warning in warnings:
+        print("Patches: %s" % warning)
     router = MidiRouter(registry, profile)
     router.on_profile_changed = store.save if saving else None
     midi = MidiInput(engine, ports=args.input, channel=args.channel, router=router)
@@ -353,13 +427,15 @@ def main(argv=None):
         pass
     print("Playing. Press Ctrl+C to stop.")
     try:
-        if not args.no_gui and launch_gui(engine, registry, router, store, opened, midi.stop):
+        if not args.no_gui and launch_gui(
+                engine, registry, router, store, opened, midi.stop,
+                patch_store=patch_store, patch_defaults=patch_defaults):
             pass
         elif args.no_console:
             while True:
                 time.sleep(0.2)
         else:
-            console_loop(engine)
+            console_loop(engine, registry, patch_store, patch_defaults)
     except KeyboardInterrupt:
         pass
     finally:
