@@ -18,6 +18,9 @@ from .config import (
     GLIDE_MAX,
     UNISON_MAX,
     UNISON_DETUNE_MAX,
+    TEMPO_MIN,
+    TEMPO_MAX,
+    DELAY_DIVISION_NAMES,
 )
 from .filters import LPF_MIN_HZ, LPF_MAX_HZ
 
@@ -155,7 +158,7 @@ def build_registry(engine):
         "delay": Param(
             id="fx_delay_time", label="Time", group="Effects", kind=CONTINUOUS,
             minimum=200.0, maximum=4000.0, scale="log", fmt="{:.0f} ms",
-            under="fx_delay", get=lambda: fx.delay.time_ms,
+            under="fx_delay", get=lambda: engine.delay_manual_ms,
             set=engine.set_delay_time, tooltip="Delay time between echoes."),
         "reverb": Param(
             id="fx_reverb_amount", label="Amount", group="Effects",
@@ -303,6 +306,12 @@ def build_registry(engine):
               get=lambda: p["unison_spread"], set=engine.set_unison_spread,
               tooltip="Stereo width of the unison voices."),
     ]
+    params += [
+        Param(id="tempo_bpm", label="BPM", group="Tempo", kind=CONTINUOUS,
+              minimum=TEMPO_MIN, maximum=TEMPO_MAX, fmt="{:.0f}",
+              get=lambda: p["tempo_bpm"], set=engine.set_tempo_bpm,
+              tooltip="Manual tempo, used when no MIDI clock is arriving."),
+    ]
     pingpong = Param(
         id="fx_delay_pingpong", label="Ping-pong", group="Effects", kind=TOGGLE,
         under="fx_delay_time", get=lambda: fx.delay.pingpong,
@@ -320,6 +329,17 @@ def build_registry(engine):
                   kind=CONTINUOUS, minimum=0.0, maximum=0.9, under="fx_delay",
                   get=lambda: fx.delay.damp, set=engine.set_delay_damp,
                   tooltip="Echo brightness: higher = darker echoes."),
+            Param(id="fx_delay_sync", label="Sync", group="Effects",
+                  kind=TOGGLE, under="fx_delay_time",
+                  get=lambda: p["delay_sync"], set=engine.set_delay_sync,
+                  tooltip="Lock the delay time to the tempo (MIDI clock "
+                          "when present, otherwise the BPM setting)."),
+            Param(id="fx_delay_division", label="Division", group="Effects",
+                  kind=CHOICE, choices=DELAY_DIVISION_NAMES,
+                  under="fx_delay_time", get=lambda: p["delay_division"],
+                  set=engine.set_delay_division,
+                  tooltip="Note length of one echo when synced. "
+                          ". = dotted, T = triplet."),
         ],
         "reverb": [
             Param(id="fx_reverb_size", label="Size", group="Effects",

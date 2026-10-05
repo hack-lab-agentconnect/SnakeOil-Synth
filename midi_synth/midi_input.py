@@ -1,4 +1,5 @@
 import sys
+import time
 import traceback
 
 import mido
@@ -6,6 +7,9 @@ import mido
 from .bindings import default_profile
 from .midi_router import MidiRouter
 from .params import build_registry
+
+
+REALTIME = frozenset(("clock", "start", "stop", "continue"))
 
 
 class MidiInput:
@@ -57,7 +61,22 @@ class MidiInput:
         elif control == 123:
             self.engine.all_notes_off()
 
+    def _on_realtime(self, kind):
+        tempo = self.engine.tempo
+        if kind == "clock":
+            tempo.on_clock(time.perf_counter())
+        elif kind == "start":
+            tempo.on_start()
+        elif kind == "stop":
+            tempo.on_stop()
+        else:
+            tempo.on_continue()
+
     def _on_message(self, msg):
+        kind = msg.type
+        if kind in REALTIME:
+            self._on_realtime(kind)
+            return
         if not self._accepts(msg):
             return
         try:

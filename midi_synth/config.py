@@ -56,6 +56,27 @@ LFO_FILTER_OCTAVES = 3.0
 LFO_PWM_RANGE = 0.25
 GLIDE_MAX = 2.0
 
+TEMPO_MIN = 40.0
+TEMPO_MAX = 240.0
+DEFAULT_TEMPO = 120.0
+CLOCK_PPQN = 24
+DELAY_DIVISIONS = (
+    ("1/1", 4.0),
+    ("1/2", 2.0),
+    ("1/2.", 3.0),
+    ("1/4", 1.0),
+    ("1/4.", 1.5),
+    ("1/4T", 2.0 / 3.0),
+    ("1/8", 0.5),
+    ("1/8.", 0.75),
+    ("1/8T", 1.0 / 3.0),
+    ("1/16", 0.25),
+    ("1/16.", 0.375),
+)
+DELAY_DIVISION_NAMES = tuple(name for name, _ in DELAY_DIVISIONS)
+DELAY_DIVISION_BEATS = dict(DELAY_DIVISIONS)
+DEFAULT_DELAY_DIVISION = "1/8"
+
 UNISON_MAX = 12
 UNISON_DETUNE_MAX = 50.0
 DEFAULT_UNISON_DETUNE = 15.0

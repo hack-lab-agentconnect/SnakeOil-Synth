@@ -39,11 +39,17 @@ from .config import (
     UNISON_DETUNE_MAX,
     DEFAULT_UNISON_DETUNE,
     DEFAULT_UNISON_SPREAD,
+    TEMPO_MIN,
+    TEMPO_MAX,
+    DEFAULT_TEMPO,
+    DELAY_DIVISION_BEATS,
+    DEFAULT_DELAY_DIVISION,
 )
 from .filters import LowPass, LPF_MIN_HZ, LPF_MAX_HZ, lpf_coefficients
 from .lfo import LFO
 from .voice import IDLE, Voice, midi_note_to_freq
 from .effects import EffectChain
+from .tempo import TempoTracker
 
 
 class SynthEngine:
@@ -97,12 +103,17 @@ class SynthEngine:
             "unison_voices": 1,
             "unison_detune": DEFAULT_UNISON_DETUNE,
             "unison_spread": DEFAULT_UNISON_SPREAD,
+            "tempo_bpm": DEFAULT_TEMPO,
+            "delay_sync": False,
+            "delay_division": DEFAULT_DELAY_DIVISION,
             "lfo_pitch_ratio": 1.0,
             "lfo_filter_oct": 0.0,
             "lfo_pwm": 0.0,
             "lfo_amp": None,
         }
         self.lfo = LFO()
+        self.tempo = TempoTracker()
+        self.delay_manual_ms = self.effects.delay.time_ms
         self._last_freq = None
         self._master_bypassed = False
         self._order = 0
@@ -446,6 +457,43 @@ class SynthEngine:
     def set_delay_time(self, ms):
         with self.lock:
             self.effects.delay.set_time_ms(ms)
+            self.delay_manual_ms = self.effects.delay.time_ms
+            if self.params["delay_sync"]:
+                self._sync_delay()
+
+    def set_tempo_bpm(self, bpm):
+        self._set_unit("tempo_bpm", bpm, TEMPO_MIN, TEMPO_MAX)
+
+    def set_delay_sync(self, on):
+        with self.lock:
+            on = bool(on)
+            was = self.params["delay_sync"]
+            self.params["delay_sync"] = on
+            if on:
+                self._sync_delay()
+            elif was:
+                self.effects.delay.set_time_ms(self.delay_manual_ms)
+
+    def set_delay_division(self, name):
+        if name not in DELAY_DIVISION_BEATS:
+            raise ValueError("unknown delay division: %r (choose from %s)"
+                             % (name, ", ".join(DELAY_DIVISION_BEATS)))
+        with self.lock:
+            self.params["delay_division"] = name
+            return name
+
+    def _sync_delay(self):
+        """Lock the delay time to the tempo (external clock wins over manual)."""
+        p = self.params
+        bpm = self.tempo.effective_bpm(p["tempo_bpm"])
+        ms = 60000.0 / bpm * DELAY_DIVISION_BEATS[p["delay_division"]]
+        ms = min(max(ms, 1.0), 4000.0)
+        delay = self.effects.delay
+        if abs(ms - delay.time_ms) > 0.5:
+            delay.set_time_ms(ms)
+
+    def effective_bpm(self):
+        return self.tempo.effective_bpm(self.params["tempo_bpm"])
 
     def set_delay_pingpong(self, on):
         with self.lock:
@@ -515,6 +563,8 @@ class SynthEngine:
         with self.lock:
             mix = np.zeros(n, dtype=np.float64)
             params = self.params
+            if params["delay_sync"]:
+                self._sync_delay()
             lfo_filter = False
             if params["lfo_depth"] > 0.0:
                 lfo_filter = self._run_lfo(n)
@@ -600,6 +650,10 @@ class SynthEngine:
                 "unison_voices": self.params["unison_voices"],
                 "unison_detune": self.params["unison_detune"],
                 "unison_spread": self.params["unison_spread"],
+                "tempo_bpm": self.params["tempo_bpm"],
+                "delay_sync": self.params["delay_sync"],
+                "delay_division": self.params["delay_division"],
+                "effective_bpm": self.effective_bpm(),
                 "chorus_depth": self.effects.chorus.amount,
                 "delay_time": self.effects.delay.time_ms,
                 "delay_pingpong": self.effects.delay.pingpong,

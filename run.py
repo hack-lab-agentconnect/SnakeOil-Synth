@@ -8,6 +8,7 @@ from midi_synth.config import (
 )
 from midi_synth.bindings import default_profile
 from midi_synth.engine import SynthEngine
+from midi_synth.config import DELAY_DIVISION_BEATS
 from midi_synth.midi_input import MidiInput
 from midi_synth.midi_router import MidiRouter
 from midi_synth.params import build_registry
@@ -153,6 +154,10 @@ HELP_TEXT = """commands:
   glide <seconds>            slide between notes, 0-2 s (0 = off)
   unison <1-12> [detune_cents] [spread]  stack voices per note (polyphony = 12 // width);
                              detune 0-50 cents, spread 0-1
+  tempo <40-240>             manual tempo in BPM (used when no MIDI clock arrives)
+  delaysync <on|off> [division]  lock the delay time to the tempo; division
+                             1/1 1/2 1/2. 1/4 1/4. 1/4T 1/8 1/8. 1/8T 1/16 1/16.
+                             (. = dotted, T = triplet)
   gain <0-1.2>               master volume
   patch list                 list saved sound patches
   patch save <name>          save the current sound as a patch
@@ -361,6 +366,21 @@ def console_loop(engine, registry=None, patch_store=None, patch_defaults=None,
                     engine.set_unison_detune(float(parts[2]))
                 if len(parts) > 3:
                     engine.set_unison_spread(float(parts[3]))
+            elif cmd == "tempo":
+                if len(parts) != 2:
+                    print("usage: tempo <40-240>")
+                else:
+                    engine.set_tempo_bpm(float(parts[1]))
+            elif cmd == "delaysync":
+                on = parse_on_off(parts[1]) if len(parts) > 1 else None
+                division = parts[2] if len(parts) > 2 else None
+                if (on is None or len(parts) > 3
+                        or (division is not None and division not in DELAY_DIVISION_BEATS)):
+                    print("usage: delaysync <on|off> [%s]" % "|".join(DELAY_DIVISION_BEATS))
+                else:
+                    if division is not None:
+                        engine.set_delay_division(division)
+                    engine.set_delay_sync(on)
             elif cmd == "fx":
                 name = parts[1].lower()
                 action = parse_on_off(parts[2], allow_toggle=True) if len(parts) > 2 else "toggle"

@@ -23,6 +23,7 @@ GROUP_POSITIONS = {
     "LFO": (2, 2, 1, 1),
     "Glide": (3, 0, 1, 1),
     "Unison": (3, 1, 1, 1),
+    "Tempo": (3, 2, 1, 1),
 }
 
 BLOCK_GROUPS = ("Effects",)
@@ -170,6 +171,8 @@ class MainWindow(QMainWindow):
             cells[param.id] = (row, col)
             box.layout().addWidget(control, row, col)
             self.controls[param.id] = control
+        self.tempo_label = QLabel("")
+        groups["Tempo"].layout().addWidget(self.tempo_label, 1, 0)
         grid = QGridLayout()
         for index, (name, box) in enumerate(groups.items()):
             grid.addWidget(box, *GROUP_POSITIONS.get(name, (2, index, 1, 1)))
@@ -448,7 +451,15 @@ class MainWindow(QMainWindow):
     def _on_message(self, text):
         self.msg_label.setText("Last MIDI: " + text)
 
+    def _update_tempo_label(self):
+        external = self.engine.tempo.external_bpm()
+        if external is not None:
+            self.tempo_label.setText("%.1f BPM (MIDI clock)" % external)
+        else:
+            self.tempo_label.setText("%.0f BPM (manual)" % self.engine.params["tempo_bpm"])
+
     def _tick(self):
+        self._update_tempo_label()
         self.voice_label.setText("Voices: %d" % self.engine.active_note_count())
         if self.recorder is not None and self.recorder.active:
             self.rec_label.setText("REC %02d:%02d" % divmod(int(self.recorder.elapsed), 60))

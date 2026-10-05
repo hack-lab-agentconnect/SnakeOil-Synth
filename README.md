@@ -198,6 +198,36 @@ the sound is bit-identical to before), *Detune* 0-50 cents (default 15) and *Spr
   right channels use two filters with the same settings. Note off, sustain pedal, all
   notes off and panic act on the whole stack.
 
+## Tempo, MIDI clock and synced delay
+
+The *Tempo* group has a manual **BPM** (40-240, default 120) and a live readout:
+`120.0 BPM (MIDI clock)` when a clock is arriving, `120 BPM (manual)` otherwise.
+The delay block of the Effects group has a **Sync** toggle (default off) and a **Division**
+choice (default 1/8). Console: `tempo <bpm>` and `delaysync <on|off> [division]`.
+
+- MIDI clock is 24 pulses per quarter note. The synth reads `clock` from every connected
+  input (not filtered by channel), averages the last 48 pulses and shows the tempo to 0.1 BPM.
+  `start`, `stop` and `continue` are recognised (they set a running flag only; there is no
+  sequencer to start).
+- If no clock pulse arrives for 1 second, or fewer than 24 pulses have been seen, the manual
+  BPM is used instead and the clock is picked up again as soon as it resumes.
+- With Sync on, the delay time is `60000 / BPM * beats` ms, using the external tempo when
+  present and the manual BPM otherwise. The result is clamped to the delay's 1-4000 ms
+  range (so 1/1 below 60 BPM stops at 4000 ms). The Time knob keeps its own value and is
+  used again when Sync is switched off.
+
+| Division | Beats | Division | Beats |
+|---|---|---|---|
+| 1/1 | 4 | 1/4T | 2/3 |
+| 1/2 | 2 | 1/8 | 1/2 |
+| 1/2. | 3 | 1/8. | 3/4 |
+| 1/4 | 1 | 1/8T | 1/3 |
+| 1/4. | 3/2 | 1/16 | 1/4 |
+| | | 1/16. | 3/8 |
+
+`.` = dotted (x1.5), `T` = triplet (x2/3). The new controls are saved in patches and have
+no default MIDI CC.
+
 ## Low latency on Windows (ASIO / WASAPI)
 
 By default PortAudio picks the **MME** host API, which can add ~100–200 ms of
@@ -259,6 +289,8 @@ fltenv <-1..1>      # filter envelope amount (per-voice filter; default 0)
 lfo <rate> <depth> [wave] [dest]  # LFO: 0.05-20 Hz, depth 0-1 (0 = off); wave sine|triangle|saw|square|random; dest pitch|filter|pwm|amp
 glide <seconds>     # slide between notes, 0-2 s (default 0 = off)
 unison <1-12> [detune_cents] [spread]  # stack voices per note (default 1 = off)
+tempo <40-240>      # manual tempo in BPM (default 120)
+delaysync <on|off> [division]  # lock the delay time to the tempo (default off)
 gain <0-1.2>
 alloff | status | quit
 ```
