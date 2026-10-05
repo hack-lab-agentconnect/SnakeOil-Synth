@@ -130,26 +130,71 @@ def test_oscillator_groups_hold_their_controls(rig):
     ]
 
 
-def test_effect_dials_sit_under_their_toggles(rig):
+def _effects_layout(window):
     from PySide6.QtWidgets import QGroupBox
 
-    _, registry, _, _, window = rig
     box = next(b for b in window.findChildren(QGroupBox) if b.title() == "Effects")
     layout = box.layout()
 
-    def pos(pid):
+    def cell(pid):
         idx = layout.indexOf(window.controls[pid])
         assert idx >= 0
-        row, col, *_ = layout.getItemPosition(idx)
-        return row, col
+        return layout.getItemPosition(idx)
 
-    for name in ("chorus", "delay", "reverb", "bitcrush"):
-        dial = next(p for p in registry if p.under == "fx_" + name)
-        trow, tcol = pos("fx_" + name)
-        drow, dcol = pos(dial.id)
-        assert dcol == tcol and drow > trow
+    return cell
 
-    trow, tcol = pos("fx_delay")
-    drow, dcol = pos("fx_delay_time")
-    prow, pcol = pos("fx_delay_pingpong")
-    assert pcol == dcol == tcol and prow > drow > trow
+
+def _root(registry, pid):
+    while registry[pid].under:
+        pid = registry[pid].under
+    return pid
+
+
+def test_effect_dependents_sit_below_toggle_inside_its_span(rig):
+    _, registry, _, _, window = rig
+    cell = _effects_layout(window)
+    toggles = [p.id for p in registry if p.group == "Effects" and not p.under]
+    assert toggles == ["fx_chorus", "fx_delay", "fx_reverb", "fx_bitcrush"]
+    spans = []
+    for t in toggles:
+        trow, tcol, trs, tcs = cell(t)
+        assert (trow, tcs) == (0, 2)
+        spans.append(range(tcol, tcol + tcs))
+    for a in range(len(spans)):
+        for b in range(a + 1, len(spans)):
+            assert not set(spans[a]) & set(spans[b])
+    for p in registry:
+        if p.group != "Effects" or not p.under:
+            continue
+        trow, tcol, _, tcs = cell(_root(registry, p.id))
+        row, col, rs, cs = cell(p.id)
+        assert row > trow and (rs, cs) == (1, 1)
+        assert tcol <= col < tcol + tcs
+
+
+def test_effect_blocks_flow_two_per_row(rig):
+    _, _, _, _, window = rig
+    cell = _effects_layout(window)
+
+    def rc(pid):
+        return cell(pid)[:2]
+
+    d = rc("fx_delay")[1]
+    assert rc("fx_delay_time") == (1, d)
+    assert rc("fx_delay_pingpong") == (1, d + 1)
+    assert rc("fx_delay_feedback") == (2, d)
+    assert rc("fx_delay_damp") == (2, d + 1)
+    r = rc("fx_reverb")[1]
+    assert rc("fx_reverb_amount") == (1, r)
+    assert rc("fx_reverb_size") == (1, r + 1)
+    assert rc("fx_reverb_damp") == (2, r)
+    assert rc("fx_chorus_depth") == (1, rc("fx_chorus")[1])
+    assert rc("fx_bitcrush_amount") == (1, rc("fx_bitcrush")[1])
+
+
+def test_pingpong_is_below_delay_toggle(rig):
+    window = rig[-1]
+    cell = _effects_layout(window)
+    trow, tcol, _, tcs = cell("fx_delay")
+    prow, pcol, *_ = cell("fx_delay_pingpong")
+    assert prow > trow and tcol <= pcol < tcol + tcs

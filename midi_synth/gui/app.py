@@ -10,12 +10,13 @@ from .style import STYLE
 
 
 def run_gui(engine, registry, router, store, midi_ports, on_exit=None,
-            patch_store=None, patch_defaults=None):
+            patch_store=None, patch_defaults=None, recorder=None):
     app = QApplication.instance() or QApplication(sys.argv[:1])
     app.setStyleSheet(STYLE)
     bridge = Bridge(registry, router)
     window = MainWindow(engine, registry, router, store, midi_ports, bridge,
-                        patch_store=patch_store, patch_defaults=patch_defaults)
+                        patch_store=patch_store, patch_defaults=patch_defaults,
+                        recorder=recorder)
     window.show()
     signal.signal(signal.SIGINT, lambda *_: app.quit())
     pump = QTimer()

@@ -308,9 +308,35 @@ def build_registry(engine):
         under="fx_delay_time", get=lambda: fx.delay.pingpong,
         set=engine.set_delay_pingpong,
         tooltip="Bounce the echoes between the left and right speakers.")
+    extras = {
+        "delay": [
+            pingpong,
+            Param(id="fx_delay_feedback", label="Feedback", group="Effects",
+                  kind=CONTINUOUS, minimum=0.0, maximum=0.95, under="fx_delay",
+                  get=lambda: fx.delay.feedback, set=engine.set_delay_feedback,
+                  tooltip="How much of each echo is fed back. High = "
+                          "long trailing repeats."),
+            Param(id="fx_delay_damp", label="Tone", group="Effects",
+                  kind=CONTINUOUS, minimum=0.0, maximum=0.9, under="fx_delay",
+                  get=lambda: fx.delay.damp, set=engine.set_delay_damp,
+                  tooltip="Echo brightness: higher = darker echoes."),
+        ],
+        "reverb": [
+            Param(id="fx_reverb_size", label="Size", group="Effects",
+                  kind=CONTINUOUS, minimum=0.5, maximum=0.98,
+                  under="fx_reverb", get=lambda: fx.reverb.room,
+                  set=engine.set_reverb_size,
+                  tooltip="Room size: how long the reverb tail rings."),
+            Param(id="fx_reverb_damp", label="Damping", group="Effects",
+                  kind=CONTINUOUS, minimum=0.0, maximum=0.9,
+                  under="fx_reverb", get=lambda: fx.reverb.damp,
+                  set=engine.set_reverb_damp,
+                  tooltip="High-frequency absorption in the reverb tail. "
+                          "Higher = darker, softer tail."),
+        ],
+    }
     for n in EFFECT_NAMES:
         params.append(effect(n))
         params.append(dials[n])
-        if n == "delay":
-            params.append(pingpong)
+        params.extend(extras.get(n, ()))
     return ParamRegistry(params)

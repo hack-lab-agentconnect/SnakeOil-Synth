@@ -120,6 +120,12 @@ class Delay:
     def set_pingpong(self, on):
         self.pingpong = bool(on)
 
+    def set_feedback(self, v):
+        self.feedback = min(max(float(v), 0.0), 0.95)
+
+    def set_damp(self, v):
+        self.damp = min(max(float(v), 0.0), 0.9)
+
     def process(self, x):
         if not self.enabled:
             return x
@@ -216,6 +222,16 @@ class Reverb:
 
     def set_amount(self, v):
         self.mix = min(max(float(v), 0.0), 1.0)
+
+    def set_room(self, v):
+        self.room = min(max(float(v), 0.5), 0.98)
+        for c in self.combs + self.combs_r:
+            c.fb = self.room
+
+    def set_damp(self, v):
+        self.damp = min(max(float(v), 0.0), 0.9)
+        for c in self.combs + self.combs_r:
+            c.damp = self.damp
 
     def process(self, x):
         if not self.enabled:

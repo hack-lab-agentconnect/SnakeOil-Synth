@@ -455,6 +455,22 @@ class SynthEngine:
         with self.lock:
             self.effects.reverb.set_amount(v)
 
+    def set_reverb_size(self, v):
+        with self.lock:
+            self.effects.reverb.set_room(v)
+
+    def set_reverb_damp(self, v):
+        with self.lock:
+            self.effects.reverb.set_damp(v)
+
+    def set_delay_feedback(self, v):
+        with self.lock:
+            self.effects.delay.set_feedback(v)
+
+    def set_delay_damp(self, v):
+        with self.lock:
+            self.effects.delay.set_damp(v)
+
     def set_crush_amount(self, a):
         with self.lock:
             self.effects.bitcrush.set_amount(a)
@@ -587,7 +603,11 @@ class SynthEngine:
                 "chorus_depth": self.effects.chorus.amount,
                 "delay_time": self.effects.delay.time_ms,
                 "delay_pingpong": self.effects.delay.pingpong,
+                "delay_feedback": self.effects.delay.feedback,
+                "delay_damp": self.effects.delay.damp,
                 "reverb_amount": self.effects.reverb.mix,
+                "reverb_size": self.effects.reverb.room,
+                "reverb_damp": self.effects.reverb.damp,
                 "crush_amount": self.effects.bitcrush.amount,
                 "effects": fx,
                 "sustain": self.sustain,

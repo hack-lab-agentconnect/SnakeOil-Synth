@@ -13,6 +13,7 @@ from midi_synth.midi_router import MidiRouter
 from midi_synth.params import build_registry
 from midi_synth.patches import PatchError, PatchStore, apply as apply_patch, capture
 from midi_synth.profiles import ProfileStore, default_config_dir
+from midi_synth.recorder import Recorder, recording_path
 
 
 def parse_args(argv):
@@ -70,12 +71,17 @@ class CallbackState:
 
     def __init__(self):
         self.reported = False
+        self.recorder = None
 
 
 def render_into(outdata, engine, frames, state):
     """Render a block into outdata; on any error output silence and report it once."""
     try:
-        copy_block_to_output(outdata, engine.render(frames))
+        block = engine.render(frames)
+        copy_block_to_output(outdata, block)
+        recorder = state.recorder
+        if recorder is not None and recorder.active:
+            recorder.push(block)
     except Exception as exc:
         outdata.fill(0)
         if not state.reported:
@@ -152,6 +158,9 @@ HELP_TEXT = """commands:
   patch save <name>          save the current sound as a patch
   patch load <name>          load a patch
   patch delete <name>        delete a patch (Init cannot be deleted)
+  rec start [path]           record the output to a 16-bit stereo WAV file
+                             (default: recordings/ in the config dir)
+  rec stop                   stop recording and save the file
   sustain <on|off>           hold the sustain pedal down / up
   panic                      silence everything immediately
   alloff                     release all held notes
@@ -210,7 +219,35 @@ def patch_command(parts, registry, patch_store, defaults):
         print(exc)
 
 
-def console_loop(engine, registry=None, patch_store=None, patch_defaults=None):
+def rec_command(parts, engine, recorder, config_dir):
+    usage = "usage: rec start [path] | rec stop"
+    if recorder is None:
+        print("recording unavailable")
+        return
+    sub = parts[1].lower() if len(parts) > 1 else ""
+    try:
+        if sub == "start":
+            if len(parts) > 2:
+                path = Path(" ".join(parts[2:]))
+                path.parent.mkdir(parents=True, exist_ok=True)
+            else:
+                path = recording_path(config_dir or default_config_dir())
+            recorder.start(path, engine.sr)
+            print("recording to %s" % path)
+        elif sub == "stop" and len(parts) == 2:
+            if recorder.active:
+                recorder.stop()
+                print("saved %s (%.1f s)" % (recorder.path, recorder.elapsed))
+            else:
+                print("not recording")
+        else:
+            print(usage)
+    except (OSError, RuntimeError) as exc:
+        print(exc)
+
+
+def console_loop(engine, registry=None, patch_store=None, patch_defaults=None,
+                 recorder=None, config_dir=None):
     help_text = HELP_TEXT
     print(help_text)
     while True:
@@ -233,6 +270,8 @@ def console_loop(engine, registry=None, patch_store=None, patch_defaults=None):
                     print("  %s: %s" % (k, v))
             elif cmd == "patch":
                 patch_command(parts, registry, patch_store, patch_defaults)
+            elif cmd == "rec":
+                rec_command(parts, engine, recorder, config_dir)
             elif cmd == "sustain":
                 on = parse_on_off(parts[1]) if len(parts) > 1 else None
                 if on is None:
@@ -367,14 +406,15 @@ def open_output_stream(sd, choice, args, samplerate, callback):
 
 
 def launch_gui(engine, registry, router, store, ports, on_exit=None,
-               patch_store=None, patch_defaults=None):
+               patch_store=None, patch_defaults=None, recorder=None):
     try:
         from midi_synth.gui.app import run_gui
     except ImportError as exc:
         print("GUI unavailable (%s); using the console. Install it with: pip install PySide6" % exc)
         return False
     run_gui(engine, registry, router, store, ports, on_exit,
-            patch_store=patch_store, patch_defaults=patch_defaults)
+            patch_store=patch_store, patch_defaults=patch_defaults,
+            recorder=recorder)
     return True
 
 
@@ -449,6 +489,8 @@ def main(argv=None):
 
     stream = None
     cb_state = CallbackState()
+    recorder = Recorder()
+    cb_state.recorder = recorder
 
     def callback(outdata, frames, time_info, status):
         render_into(outdata, engine, frames, cb_state)
@@ -475,16 +517,19 @@ def main(argv=None):
     try:
         if not args.no_gui and launch_gui(
                 engine, registry, router, store, opened, midi.stop,
-                patch_store=patch_store, patch_defaults=patch_defaults):
+                patch_store=patch_store, patch_defaults=patch_defaults,
+                recorder=recorder):
             pass
         elif args.no_console:
             while True:
                 time.sleep(0.2)
         else:
-            console_loop(engine, registry, patch_store, patch_defaults)
+            console_loop(engine, registry, patch_store, patch_defaults,
+                         recorder=recorder, config_dir=store.directory)
     except KeyboardInterrupt:
         pass
     finally:
+        recorder.stop()
         if stream is not None:
             stream.stop()
             stream.close()

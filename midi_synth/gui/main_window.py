@@ -1,13 +1,15 @@
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QEvent, Qt, QTimer
 from PySide6.QtWidgets import (
-    QComboBox, QGridLayout, QGroupBox, QInputDialog, QLabel,
+    QApplication, QComboBox, QGridLayout, QGroupBox, QInputDialog, QLabel,
     QMainWindow, QMessageBox, QPushButton, QToolBar, QWidget,
 )
 
 from ..bindings import DEFAULT_NAME
 from ..patches import INIT_NAME, PatchError, apply as apply_patch, capture
 from ..profiles import ProfileError
+from ..recorder import recording_path
 from .controls import ParamControl
+from .qwerty import QwertyKeyboard
 
 GROUP_POSITIONS = {
     "Oscillator 1": (0, 0, 1, 1),
@@ -23,13 +25,18 @@ GROUP_POSITIONS = {
     "Unison": (3, 1, 1, 1),
 }
 
+BLOCK_GROUPS = ("Effects",)
+
 
 class MainWindow(QMainWindow):
     def __init__(self, engine, registry, router, store, midi_ports, bridge,
-                 patch_store=None, patch_defaults=None):
+                 patch_store=None, patch_defaults=None, recorder=None):
         super().__init__()
         self.setWindowTitle("MIDI Synth")
         self.engine = engine
+        self.recorder = recorder
+        self.rec_btn = None
+        self.qwerty = QwertyKeyboard(engine, self, on_change=self._on_qwerty_change)
         self.registry = registry
         self.router = router
         self.store = store
@@ -87,6 +94,21 @@ class MainWindow(QMainWindow):
         self.learn_btn.setCheckable(True)
         self.learn_btn.toggled.connect(self._on_learn_mode)
         bar.addWidget(self.learn_btn)
+        bar.addSeparator()
+        self.qwerty_btn = QPushButton("QWERTY keys")
+        self.qwerty_btn.setCheckable(True)
+        self.qwerty_btn.setChecked(True)
+        self.qwerty_btn.setToolTip(
+            "Play notes from the computer keyboard (A W S E D F T G Y H U J K O L P ;). "
+            "Z/X octave, C/V velocity.")
+        self.qwerty_btn.toggled.connect(self.qwerty.set_enabled)
+        bar.addWidget(self.qwerty_btn)
+        if self.recorder is not None:
+            self.rec_btn = QPushButton("Rec")
+            self.rec_btn.setCheckable(True)
+            self.rec_btn.setToolTip("Record the output to a WAV file")
+            self.rec_btn.toggled.connect(self._on_rec_toggled)
+            bar.addWidget(self.rec_btn)
 
     def _build_patch_bar(self):
         self.addToolBarBreak()
@@ -112,6 +134,7 @@ class MainWindow(QMainWindow):
     def _build_body(self):
         groups = {}
         columns = {}
+        members = {}
         for param in self.registry:
             box = groups.get(param.group)
             if box is None:
@@ -122,6 +145,23 @@ class MainWindow(QMainWindow):
             control.learnRequested.connect(self._on_learn_requested)
             control.clearRequested.connect(self._on_clear_requested)
             cells = columns.setdefault(param.group, {})
+            if param.group in BLOCK_GROUPS:
+                span = 1
+                if param.under:
+                    root = param.under
+                    while self.registry[root].under:
+                        root = self.registry[root].under
+                    count = members[root] = members.get(root, 0) + 1
+                    rrow, rcol = cells[root]
+                    row, col = rrow + 1 + (count - 1) // 2, rcol + (count - 1) % 2
+                else:
+                    row = 0
+                    col = 2 * sum(1 for r, _ in cells.values() if r == 0)
+                    span = 2
+                cells[param.id] = (row, col)
+                box.layout().addWidget(control, row, col, 1, span)
+                self.controls[param.id] = control
+                continue
             if param.under:
                 row, col = cells[param.under]
                 row += 1
@@ -142,8 +182,14 @@ class MainWindow(QMainWindow):
         self.port_label = QLabel("MIDI: " + (", ".join(midi_ports) or "none"))
         self.msg_label = QLabel("Last MIDI: –")
         self.voice_label = QLabel("Voices: 0")
-        for label in (self.port_label, self.msg_label, self.voice_label):
+        self.qwerty_label = QLabel(self.qwerty.status_text())
+        self.rec_label = QLabel("")
+        for label in (self.port_label, self.msg_label, self.voice_label,
+                      self.qwerty_label, self.rec_label):
             bar.addPermanentWidget(label)
+        app = QApplication.instance()
+        app.installEventFilter(self.qwerty)
+        app.applicationStateChanged.connect(self._on_app_state_changed)
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
         self._timer.start(250)
@@ -404,3 +450,45 @@ class MainWindow(QMainWindow):
 
     def _tick(self):
         self.voice_label.setText("Voices: %d" % self.engine.active_note_count())
+        if self.recorder is not None and self.recorder.active:
+            self.rec_label.setText("REC %02d:%02d" % divmod(int(self.recorder.elapsed), 60))
+
+    # ---- keyboard and recording ---------------------------------------
+
+    def _on_qwerty_change(self):
+        self.qwerty_label.setText(self.qwerty.status_text())
+
+    def _on_app_state_changed(self, state):
+        if state != Qt.ApplicationActive:
+            self.qwerty.release_all()
+
+    def event(self, event):
+        if event.type() == QEvent.WindowDeactivate:
+            self.qwerty.release_all()
+        return super().event(event)
+
+    def closeEvent(self, event):
+        self.qwerty.release_all()
+        QApplication.instance().removeEventFilter(self.qwerty)
+        if self.recorder is not None:
+            self.recorder.stop()
+        super().closeEvent(event)
+
+    def _on_rec_toggled(self, checked):
+        if checked:
+            try:
+                path = recording_path(self.store.directory)
+                self.recorder.start(path, self.engine.sr)
+            except (OSError, RuntimeError) as exc:
+                self.rec_btn.blockSignals(True)
+                self.rec_btn.setChecked(False)
+                self.rec_btn.blockSignals(False)
+                self.statusBar().showMessage("Recording failed: %s" % exc, 8000)
+                return
+            self.rec_label.setText("REC 00:00")
+            self.statusBar().showMessage("Recording to %s" % path)
+        else:
+            path = self.recorder.path
+            self.recorder.stop()
+            self.rec_label.setText("")
+            self.statusBar().showMessage("Saved %s" % path)

@@ -16,10 +16,15 @@ toggleable effects chain.
 - **Octave switches:** osc 1 can play one octave down, osc 2 one octave up (relative to the played note, on top of its tuning). Osc 2's octave-up switch is on by default.
 - Toggleable effects: **Chorus, Delay, Reverb, Bitcrush**. In the GUI each has a
   dial under its button: chorus **Depth** (how far the delay swings; the LFO rate is fixed
-  at 0.5 Hz), delay **Time** (200-4000 ms, log scale) with a **Ping-pong** button below it,
-  reverb **Amount** (wet
-  level) and bitcrush **Crush** (bit depth and downsampling together). The dials
-  have no default MIDI CC; use MIDI Learn to bind them.
+  at 0.5 Hz), delay **Time** (200-4000 ms, log scale), reverb **Amount** (wet
+  level) and bitcrush **Crush** (bit depth and downsampling together). Each effect owns a
+  two-column block in the Effects group: the on/off button spans the top, and its controls
+  flow two per row beneath it. The delay block has **Time**, **Ping-pong**, **Feedback**
+  (0-0.95, how long the echoes repeat) and **Tone** (0-0.9, higher = darker echoes); the
+  reverb block has **Amount**, **Size** (0.5-0.98, how long the tail rings) and **Damping**
+  (0-0.9, higher = darker tail). The defaults (Feedback 0.35, Tone 0.25, Size 0.84,
+  Damping 0.25) match the sound before these dials existed. The dials have no default MIDI
+  CC; use MIDI Learn to bind them, and they are saved in patches.
 - **Stereo output.** Voices and the filter are mono; the effect chain is stereo. Chorus
   runs a left and a right delay line with opposite LFO phase, reverb uses a second comb/allpass
   bank offset by 23 samples for the right channel, delay keeps a buffer per channel, and the
@@ -73,6 +78,34 @@ The window opens by default; use `--no-gui` for the console only.
   (`~/.config/midi-synth/profiles/` elsewhere). Copy the files to share them.
 - `--profile NAME` starts with a given profile; `--config-dir PATH` uses another
   config directory.
+
+## QWERTY keyboard
+
+The **QWERTY keys** toolbar button (on by default) plays notes from the computer keyboard,
+with no MIDI device needed. The status bar shows the current octave and velocity
+(`Oct +0  Vel 100`).
+
+| Keys | Action |
+| --- | --- |
+| `A W S E D F T G Y H U J K O L P ;` | Chromatic notes from C of the current octave (C4 = MIDI 60 at octave +0): C, C#, D, D#, E, F, F#, G, G#, A, A#, B, C, C#, D, D#, E |
+| `Z` / `X` | Octave down / up (range -3 to +3) |
+| `C` / `V` | Velocity -10 / +10 (default 100, range 10-127) |
+
+Held keys keep sounding until released, and a key always releases the note it started even
+if you changed octave meanwhile. Auto-repeat, keys pressed with Ctrl, Alt or Meta, and keys
+typed into a text box or number field are ignored. All keyboard notes are released when the
+window loses focus or the button is switched off.
+
+## Recording
+
+The **Rec** toolbar button records the synth output to a 16-bit stereo WAV file (at the
+engine's sample rate) in `recordings/synth-YYYYmmdd-HHMMSS.wav` inside the config directory
+(next to `profiles/` and `patches/`). The status bar shows the file path and the elapsed
+time while recording, and "Saved <path>" when you stop. Recording runs on a background
+thread; if the disk cannot keep up, blocks are dropped rather than glitching the audio.
+
+Console: `rec start [path]` starts recording (to `path`, or to a timestamped file in the
+recordings folder), and `rec stop` finishes the file.
 
 ## Patches
 
@@ -204,6 +237,8 @@ chorusdepth <0-1>   # chorus depth (default 0.3; LFO rate fixed at 0.5 Hz)
 delaytime <200-4000>  # delay time in ms (default 300)
 pingpong <on|off>   # bounce delay echoes between left and right (default off)
 reverbamt <0-1>     # reverb wet amount (default 0.3)
+rec start [path]    # record the output to a 16-bit stereo WAV (default: recordings/ in the config dir)
+rec stop            # stop recording and save the file
 crush <0-1>         # bitcrush amount: bit depth and downsampling (default 0.5)
 square <on|off>     # oscillator 1 square layer over the saw (default on)
 pwm1 <0-0.5>        # oscillator 1 square-layer pulse width (default 0; 0.5 = plain square)
