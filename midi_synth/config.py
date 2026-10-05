@@ -13,6 +13,9 @@ SEMITONE_MAX = 12.0
 CENTS_MIN = -0.5
 CENTS_MAX = 0.5
 
+HPF_MODES = ("voice", "master")
+DEFAULT_HPF_MODE = "voice"
+
 FM_INDEX_MAX = 8.0
 PITCH_BEND_RANGE = 2.0
 

@@ -15,7 +15,10 @@ from .config import (
     SEMITONE_MAX,
     CENTS_MIN,
     CENTS_MAX,
+    HPF_MODES,
+    DEFAULT_HPF_MODE,
 )
+from .filters import HighPass, HPF_MIN_HZ, HPF_MAX_HZ, hpf_coefficients
 from .voice import Voice
 from .effects import EffectChain
 
@@ -28,6 +31,7 @@ class SynthEngine:
         self.lock = threading.RLock()
         self.voices = [Voice(sr) for _ in range(max_voices)]
         self.effects = EffectChain(sr)
+        self.master_hpf = HighPass(sr)
         self.params = {
             "osc1_waveform": "sine",
             "osc2_waveform": "sine",
@@ -41,6 +45,10 @@ class SynthEngine:
             "pitch_bend": 0.0,
             "pitch_ratio": 1.0,
             "master_gain": 0.8,
+            "hpf_cutoff": HPF_MIN_HZ,
+            "hpf_resonance": 0.0,
+            "hpf_mode": DEFAULT_HPF_MODE,
+            "hpf_coeffs": None,
         }
         self._order = 0
         self._refresh_oscillators()
@@ -104,6 +112,36 @@ class SynthEngine:
                     max(cents, CENTS_MIN), CENTS_MAX
                 )
 
+    def _update_hpf(self, force_reset=False):
+        p = self.params
+        was_bypassed = p["hpf_coeffs"] is None
+        if p["hpf_cutoff"] <= HPF_MIN_HZ * 1.01:
+            p["hpf_coeffs"] = None
+        else:
+            p["hpf_coeffs"] = hpf_coefficients(p["hpf_cutoff"], p["hpf_resonance"], self.sr)
+        if force_reset or was_bypassed != (p["hpf_coeffs"] is None):
+            self.master_hpf.reset()
+            for v in self.voices:
+                v.hpf.reset()
+
+    def set_hpf_cutoff(self, hz):
+        with self.lock:
+            self.params["hpf_cutoff"] = min(max(float(hz), HPF_MIN_HZ), HPF_MAX_HZ)
+            self._update_hpf()
+
+    def set_hpf_resonance(self, resonance):
+        with self.lock:
+            self.params["hpf_resonance"] = min(max(float(resonance), 0.0), 1.0)
+            self._update_hpf()
+
+    def set_hpf_mode(self, mode):
+        if mode not in HPF_MODES:
+            raise ValueError("unknown filter mode: %r (choose from %s)" % (mode, ", ".join(HPF_MODES)))
+        with self.lock:
+            self.params["hpf_mode"] = mode
+            self._update_hpf(force_reset=True)
+            return mode
+
     def set_master_gain(self, gain):
         with self.lock:
             self.params["master_gain"] = min(max(gain, 0.0), 1.5)
@@ -164,6 +202,9 @@ class SynthEngine:
             for v in self.voices:
                 if v.active:
                     mix += v.render(n, params)
+            coeffs = params["hpf_coeffs"]
+            if coeffs is not None and params["hpf_mode"] == "master":
+                mix = self.master_hpf.process(mix, coeffs)
             if apply_effects:
                 mix = self.effects.process(mix)
             mix *= params["master_gain"]
@@ -185,6 +226,9 @@ class SynthEngine:
                 "detune2_semitones": self.params["detune2_semitones"],
                 "detune2_cents": self.params["detune2_cents"],
                 "master_gain": self.params["master_gain"],
+                "hpf_cutoff": self.params["hpf_cutoff"],
+                "hpf_resonance": self.params["hpf_resonance"],
+                "hpf_mode": self.params["hpf_mode"],
                 "effects": fx,
                 "active_voices": sum(1 for v in self.voices if v.active),
             }

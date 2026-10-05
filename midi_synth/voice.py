@@ -1,5 +1,7 @@
 import numpy as np
 
+from .filters import HighPass
+
 ATTACK, DECAY, SUSTAIN, RELEASE, IDLE = range(5)
 
 
@@ -77,6 +79,7 @@ class Voice:
         self.osc1 = Oscillator(sr, "sine")
         self.osc2 = Oscillator(sr, "sine")
         self.env = Envelope(sr)
+        self.hpf = HighPass(sr)
         self.note = -1
         self.gate = False
         self.freq = 0.0
@@ -96,6 +99,7 @@ class Voice:
         self.osc1.reset()
         self.osc2.reset()
         self.env.note_on()
+        self.hpf.reset()
 
     def note_off(self):
         self.gate = False
@@ -126,6 +130,9 @@ class Voice:
             elif mode == "ring":
                 sec = sec * ((1.0 - depth) + depth * mod)
         mix = params["osc1_level"] * mod + params["osc2_level"] * sec
+        coeffs = params["hpf_coeffs"]
+        if coeffs is not None and params["hpf_mode"] == "voice":
+            mix = self.hpf.process(mix, coeffs)
         env = self.env.process(n)
         amp = 0.22 * (0.3 + 0.7 * self.velocity)
         return mix * env * amp
