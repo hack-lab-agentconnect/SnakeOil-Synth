@@ -12,7 +12,7 @@ from midi_synth.config import DELAY_DIVISION_BEATS
 from midi_synth.midi_input import MidiInput
 from midi_synth.midi_router import MidiRouter
 from midi_synth.params import build_registry
-from midi_synth.patches import PatchError, PatchStore, apply as apply_patch, capture
+from midi_synth.patches import INIT_NAME, PatchError, PatchStore, apply as apply_patch, capture
 from midi_synth.profiles import ProfileStore, default_config_dir
 from midi_synth.recorder import Recorder, recording_path
 
@@ -163,11 +163,12 @@ HELP_TEXT = """commands:
   patch save <name>          save the current sound as a patch
   patch load <name>          load a patch
   patch delete <name>        delete a patch (Init cannot be deleted)
+  patch reset                restore the Init patch to the factory sound
   rec start [path]           record the output to a 16-bit stereo WAV file
                              (default: recordings/ in the config dir)
   rec stop                   stop recording and save the file
   sustain <on|off>           hold the sustain pedal down / up
-  panic                      silence everything immediately
+  panic                      silence all voices immediately (delay/reverb tails still ring out)
   alloff                     release all held notes
   status                     show current settings
   help                       show this help
@@ -175,25 +176,33 @@ HELP_TEXT = """commands:
 
 
 def load_startup_patch(registry, patch_store, defaults, name=None):
-    """Apply `name` (or the last-used patch) and return warning strings.
+    """Apply `name` (or the last-used patch); return (warnings, applied name).
 
-    Anything unreadable or missing is reported and the factory sound stays.
+    Anything unreadable or missing is reported, the factory sound stays and
+    the applied name is None; the last-used patch then becomes Init so the
+    GUI does not show a patch that never loaded.
     """
     warnings = []
     name = name or patch_store.last_used()
-    if name:
-        try:
-            values = patch_store.load(name)
-        except PatchError as exc:
-            warnings.append("Patch %r not loaded (%s); using factory defaults" % (name, exc))
-        else:
-            warnings += apply_patch(registry, values, defaults)
-            patch_store.set_last_used(name)
-    return warnings
+    if not name:
+        return warnings, None
+    try:
+        values = patch_store.load(name)
+        warnings += apply_patch(registry, values, defaults)
+        patch_store.set_last_used(name)
+        stored = {n.lower(): n for n in patch_store.names()}
+        return warnings, stored.get(name.lower(), name)
+    except Exception as exc:
+        warnings.append("Patch %r not loaded (%s); using factory defaults" % (name, exc))
+    try:
+        patch_store.set_last_used(INIT_NAME)
+    except OSError:
+        pass
+    return warnings, None
 
 
 def patch_command(parts, registry, patch_store, defaults):
-    usage = "usage: patch list | save <name> | load <name> | delete <name>"
+    usage = "usage: patch list | save <name> | load <name> | delete <name> | reset"
     if registry is None or patch_store is None:
         print("patches unavailable")
         return
@@ -205,6 +214,9 @@ def patch_command(parts, registry, patch_store, defaults):
                 print("  %s" % n)
             for w in patch_store.warnings:
                 print("  (%s)" % w)
+        elif sub == "reset" and not name:
+            patch_store.reset_init(defaults)
+            print("Init patch reset to the factory sound")
         elif sub in ("save", "load", "delete") and name:
             if sub == "save":
                 patch_store.save(name, capture(registry))
@@ -234,6 +246,9 @@ def rec_command(parts, engine, recorder, config_dir):
         if sub == "start":
             if len(parts) > 2:
                 path = Path(" ".join(parts[2:]))
+                if path.exists():
+                    print("%s already exists; choose a new file name" % path)
+                    return
                 path.parent.mkdir(parents=True, exist_ok=True)
             else:
                 path = recording_path(config_dir or default_config_dir())
@@ -242,7 +257,10 @@ def rec_command(parts, engine, recorder, config_dir):
         elif sub == "stop" and len(parts) == 2:
             if recorder.active:
                 recorder.stop()
-                print("saved %s (%.1f s)" % (recorder.path, recorder.elapsed))
+                problems = recorder.problem_summary()
+                print("saved %s (%.1f s)%s"
+                      % (recorder.path, recorder.elapsed,
+                         " - warning: " + problems if problems else ""))
             else:
                 print("not recording")
         else:
@@ -374,8 +392,11 @@ def console_loop(engine, registry=None, patch_store=None, patch_defaults=None,
             elif cmd == "delaysync":
                 on = parse_on_off(parts[1]) if len(parts) > 1 else None
                 division = parts[2] if len(parts) > 2 else None
+                names = {n.lower(): n for n in DELAY_DIVISION_BEATS}
+                if division is not None:
+                    division = names.get(division.lower())
                 if (on is None or len(parts) > 3
-                        or (division is not None and division not in DELAY_DIVISION_BEATS)):
+                        or (len(parts) > 2 and division is None)):
                     print("usage: delaysync <on|off> [%s]" % "|".join(DELAY_DIVISION_BEATS))
                 else:
                     if division is not None:
@@ -426,7 +447,8 @@ def open_output_stream(sd, choice, args, samplerate, callback):
 
 
 def launch_gui(engine, registry, router, store, ports, on_exit=None,
-               patch_store=None, patch_defaults=None, recorder=None):
+               patch_store=None, patch_defaults=None, recorder=None,
+               initial_patch=None):
     try:
         from midi_synth.gui.app import run_gui
     except ImportError as exc:
@@ -434,7 +456,7 @@ def launch_gui(engine, registry, router, store, ports, on_exit=None,
         return False
     run_gui(engine, registry, router, store, ports, on_exit,
             patch_store=patch_store, patch_defaults=patch_defaults,
-            recorder=recorder)
+            recorder=recorder, initial_patch=initial_patch)
     return True
 
 
@@ -488,11 +510,13 @@ def main(argv=None):
     patch_store = PatchStore(store.directory)
     try:
         patch_store.ensure_init(patch_defaults)
-        warnings = load_startup_patch(registry, patch_store, patch_defaults, args.patch)
+        warnings, applied_patch = load_startup_patch(
+            registry, patch_store, patch_defaults, args.patch)
     except OSError as exc:
         print("Patches unavailable (%s); using factory defaults, nothing will be saved" % exc)
         patch_store = None
         warnings = []
+        applied_patch = None
     if patch_store is not None:
         warnings += patch_store.warnings
     for warning in warnings:
@@ -538,7 +562,7 @@ def main(argv=None):
         if not args.no_gui and launch_gui(
                 engine, registry, router, store, opened, midi.stop,
                 patch_store=patch_store, patch_defaults=patch_defaults,
-                recorder=recorder):
+                recorder=recorder, initial_patch=applied_patch or INIT_NAME):
             pass
         elif args.no_console:
             while True:

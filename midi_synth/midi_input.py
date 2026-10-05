@@ -75,7 +75,10 @@ class MidiInput:
     def _on_message(self, msg):
         kind = msg.type
         if kind in REALTIME:
-            self._on_realtime(kind)
+            try:
+                self._on_realtime(kind)
+            except Exception:
+                traceback.print_exc(file=sys.stderr)
             return
         if not self._accepts(msg):
             return

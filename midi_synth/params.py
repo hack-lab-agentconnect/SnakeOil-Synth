@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass
 from typing import Any, Callable, Tuple
 
@@ -86,7 +87,10 @@ class ParamRegistry:
 
     def _coerce(self, param, value):
         if param.kind == CONTINUOUS:
-            return min(max(float(value), param.minimum), param.maximum)
+            number = float(value)
+            if not math.isfinite(number):
+                raise ValueError("%s must be a finite number, got %r" % (param.id, value))
+            return min(max(number, param.minimum), param.maximum)
         if param.kind == TOGGLE:
             return bool(value)
         if value not in param.choices:

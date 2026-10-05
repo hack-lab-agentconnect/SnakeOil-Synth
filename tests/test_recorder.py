@@ -159,6 +159,7 @@ def test_push_never_raises_on_bad_input(tmp_path):
     r.push("junk")
     r.push(np.zeros((4, 2), dtype=np.float32))
     r.stop()
+    assert r.overruns >= 1  # the unconvertible block is counted as dropped
     assert read_wav(tmp_path / "bad.wav")[3] == 4
 
 

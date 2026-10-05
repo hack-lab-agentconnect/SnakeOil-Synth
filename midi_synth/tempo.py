@@ -1,11 +1,12 @@
 """MIDI clock tracking: turn a stream of 24-ppqn clock pulses into a BPM."""
 
+import math
 import statistics
 import threading
 import time
 from collections import deque
 
-from .config import CLOCK_PPQN
+from .config import CLOCK_PPQN, TEMPO_MAX, TEMPO_MIN
 
 HISTORY = 49  # timestamps kept -> 48 intervals
 MIN_PULSES = 24  # one beat of clock before the estimate is trusted
@@ -30,6 +31,8 @@ class TempoTracker:
         self.running = False
 
     def on_clock(self, timestamp):
+        if not math.isfinite(timestamp):
+            return
         with self._lock:
             if self._stamps and timestamp - self._stamps[-1] > TIMEOUT_S:
                 self._stamps.clear()
@@ -48,7 +51,14 @@ class TempoTracker:
             # (timestamp noise telescopes, so the error shrinks with window length).
             typical = statistics.median(intervals)
             kept = [d for d in intervals if 0.5 * typical <= d <= 1.5 * typical]
-            raw = 60.0 / (CLOCK_PPQN * statistics.fmean(kept))
+            # Batched delivery can leave no interval near the median; fall back
+            # to the mean of everything, then drop implausible estimates.
+            mean = statistics.fmean(kept or intervals)
+            if mean <= 0.0:
+                return
+            raw = 60.0 / (CLOCK_PPQN * mean)
+            if not TEMPO_MIN / 2 <= raw <= TEMPO_MAX * 2:
+                return
             if self._ema is None:
                 self._ema = raw
             else:
@@ -70,8 +80,9 @@ class TempoTracker:
         bpm, last = self._bpm, self._last
         if bpm is None or last is None or now - last > TIMEOUT_S:
             return None
-        return bpm
+        return min(max(bpm, TEMPO_MIN), TEMPO_MAX)
 
     def effective_bpm(self, manual_bpm, now=None):
         external = self.external_bpm(now)
-        return manual_bpm if external is None else external
+        bpm = manual_bpm if external is None else external
+        return min(max(bpm, TEMPO_MIN), TEMPO_MAX)

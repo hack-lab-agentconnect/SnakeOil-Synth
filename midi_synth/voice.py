@@ -147,6 +147,7 @@ class Voice:
             self.osc1.reset()
             self.osc2.reset()
         self.env.note_on()
+        self.flt_env.level = 0.0
         self.flt_env.note_on()
         self.lpf.reset()
 

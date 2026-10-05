@@ -68,6 +68,15 @@ class Recorder:
             return 0.0
         return self._frames / self._samplerate
 
+    def problem_summary(self):
+        """Describe write errors and dropped blocks; empty when all went well."""
+        parts = []
+        if self.error is not None:
+            parts.append("write error: %s" % self.error)
+        if self._overruns:
+            parts.append("%d blocks dropped" % self._overruns)
+        return "; ".join(parts)
+
     def start(self, path, samplerate, channels=2):
         with self._lock:
             if self._active:

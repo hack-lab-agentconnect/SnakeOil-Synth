@@ -52,7 +52,8 @@ class _BodyScroll(QScrollArea):
 
 class MainWindow(QMainWindow):
     def __init__(self, engine, registry, router, store, midi_ports, bridge,
-                 patch_store=None, patch_defaults=None, recorder=None):
+                 patch_store=None, patch_defaults=None, recorder=None,
+                 initial_patch=None):
         super().__init__()
         self.setWindowTitle("MIDI Synth")
         self.engine = engine
@@ -88,7 +89,7 @@ class MainWindow(QMainWindow):
         for warning in store.warnings:
             self.statusBar().showMessage(warning, 8000)
         if patch_store is not None:
-            self._reload_patches(patch_store.last_used() or INIT_NAME)
+            self._reload_patches(initial_patch or patch_store.last_used() or INIT_NAME)
 
     # ---- construction -------------------------------------------------
 
@@ -340,16 +341,18 @@ class MainWindow(QMainWindow):
         return (self.patch_name or "").lower() == INIT_NAME.lower()
 
     def _reload_patches(self, select):
-        self.patch_name = select
-        self.patch_modified = False
         self.patch_box.blockSignals(True)
         self.patch_box.clear()
         for name in self.patch_store.names():
             self.patch_box.addItem(name, name)
         index = self.patch_box.findData(select, Qt.UserRole, Qt.MatchFixedString)
-        if index >= 0:
-            self.patch_box.setCurrentIndex(index)
+        if index < 0:
+            select = INIT_NAME
+            index = self.patch_box.findData(select, Qt.UserRole, Qt.MatchFixedString)
+        self.patch_box.setCurrentIndex(index)
         self.patch_box.blockSignals(False)
+        self.patch_name = select
+        self.patch_modified = False
         self._update_patch_ui()
 
     def _update_patch_ui(self):
@@ -358,12 +361,13 @@ class MainWindow(QMainWindow):
             name = self.patch_box.itemData(index)
             self.patch_box.setItemText(index, name + ("*" if self.patch_modified else ""))
         is_init = self._patch_is_init()
-        self.patch_btn["save"].setEnabled(not is_init)
+        exists = index >= 0
+        self.patch_btn["save"].setEnabled(exists and not is_init)
         self.patch_btn["save"].setToolTip(
             "Init is read-only; use Save As… to keep this sound" if is_init
             else "Overwrite the current patch")
-        self.patch_btn["rename"].setEnabled(not is_init)
-        self.patch_btn["delete"].setEnabled(not is_init)
+        self.patch_btn["rename"].setEnabled(exists and not is_init)
+        self.patch_btn["delete"].setEnabled(exists and not is_init)
 
     def _on_patch_chosen(self, index):
         self._load_patch(self.patch_box.itemData(index))
@@ -562,4 +566,8 @@ class MainWindow(QMainWindow):
             path = self.recorder.path
             self.recorder.stop()
             self.rec_label.setText("")
-            self.statusBar().showMessage("Saved %s" % path)
+            problems = self.recorder.problem_summary()
+            if problems:
+                self.statusBar().showMessage("Saved %s (%s)" % (path, problems), 12000)
+            else:
+                self.statusBar().showMessage("Saved %s" % path)

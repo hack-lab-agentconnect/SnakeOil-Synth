@@ -176,14 +176,14 @@ def test_init_cannot_be_deleted_or_renamed_but_can_be_reset(store):
         store.delete("init")
     with pytest.raises(PatchError):
         store.rename("Init", "Other")
-    store.save("Init", {"x": 2})
+    store._write("Init", {"x": 2})
     store.reset_init({"x": 1})
     assert store.load("Init") == {"x": 1}
 
 
 def test_ensure_init_does_not_overwrite(store):
     store.ensure_init({"x": 1})
-    store.save("Init", {"x": 5})
+    store._write("Init", {"x": 5})
     store.ensure_init({"x": 1})
     assert store.load("Init") == {"x": 5}
 
@@ -334,11 +334,12 @@ def test_load_startup_patch_helper(store):
     store.ensure_init(defaults)
     store.save("Lead", {"osc1_level": 0.4})
     store.set_last_used("Lead")
-    assert run.load_startup_patch(registry, store, defaults, None) == []
+    assert run.load_startup_patch(registry, store, defaults, None) == ([], "Lead")
     assert registry.get("osc1_level") == pytest.approx(0.4)
     # explicit name wins; unknown name warns and leaves defaults
     apply(registry, defaults, defaults)
-    warnings = run.load_startup_patch(registry, store, defaults, "Nope")
+    warnings, applied = run.load_startup_patch(registry, store, defaults, "Nope")
+    assert applied is None
     assert any("Nope" in w for w in warnings)
     assert registry.get("osc1_level") == defaults["osc1_level"]
 
@@ -349,6 +350,7 @@ def test_startup_patch_unreadable_warns_and_continues(store):
     store.patches_dir.mkdir(parents=True)
     (store.patches_dir / "Broken.json").write_text("{")
     store.set_last_used("Broken")
-    warnings = run.load_startup_patch(registry, store, defaults, None)
+    warnings, applied = run.load_startup_patch(registry, store, defaults, None)
+    assert applied is None
     assert warnings and "Broken" in warnings[0]
     assert capture(registry) == defaults

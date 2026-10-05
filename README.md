@@ -225,7 +225,7 @@ the sound is bit-identical to before), *Detune* 0-50 cents (default 15) and *Spr
 - The stack is drawn from the same 12-voice pool, so the CPU cost is bounded: polyphony
   is `12 // width` notes (width 4 = 3 notes, width 12 = 1 note).
 - When the pool is short, whole groups are stolen: groups that have been released first,
-  then the oldest. A note never ends up with only some of its voices.
+  then the oldest. A note never ends up with only some of its voices, except when the width is reduced to 1 while grouped notes are sounding.
 - Voice `i` of `N` is detuned by `linspace(-1, 1, N)[i] * Detune` cents and panned by
   `linspace(-1, 1, N)[i] * Spread` (balance law, centre voices untouched). Each voice is
   scaled by `1/sqrt(N)` so loudness stays about the same as the width grows.
@@ -327,10 +327,10 @@ An interactive console starts alongside the audio. Type `help`. Commands:
 | `tempo <40-240>` | manual tempo in BPM (used when no MIDI clock arrives) |
 | `delaysync <on\|off> [division]` | lock the delay time to the tempo; divisions 1/1 1/2 1/2. 1/4 1/4. 1/4T 1/8 1/8. 1/8T 1/16 1/16. |
 | `gain <0-1.2>` | master volume |
-| `patch list` / `save <name>` / `load <name>` / `delete <name>` | manage sound patches (Init cannot be deleted) |
+| `patch list` / `save <name>` / `load <name>` / `delete <name>` / `reset` | manage sound patches (Init is read-only and cannot be deleted; `patch reset` restores it to the factory sound) |
 | `rec start [path]` / `rec stop` | record the output to a 16-bit stereo WAV (default: `recordings/` in the config dir) |
 | `sustain <on\|off>` | hold the sustain pedal down / up |
-| `panic` | silence everything immediately |
+| `panic` | silence all voices immediately; effect tails (delay/reverb) still ring out |
 | `alloff` | release all held notes |
 | `status` | show current settings |
 | `help` | show the command list |
@@ -389,7 +389,7 @@ wins over the built-in behaviour of the same CC.
 |---|---|
 | CC 64 (sustain pedal) | value >= 64 holds notes; note-offs are deferred until the pedal lifts. Pressing a held key again retriggers it normally. |
 | CC 123 (all notes off) | releases every note, including pedal-held ones |
-| CC 120 (all sound off) | silences everything immediately (no release tail) and lifts the pedal |
+| CC 120 (all sound off) | silences all voices immediately (no release tail; delay/reverb tails still ring out) and lifts the pedal |
 | CC 121 (reset controllers) | pitch bend back to centre and pedal up |
 | Channel aftertouch | bindable like a CC (shown as `Aftertouch` or `Aftertouch ch2`); MIDI Learn works for any control, toggles act at value >= 64 |
 
@@ -428,7 +428,7 @@ The effects, filter and envelope process whole blocks with numpy / SciPy (`scipy
 rather than sample by sample. `python bench.py` prints the time per audio block against the
 block budget for 12 voices (defaults, filter placements, each effect, all effects). On the
 development machine (48 kHz, 256-sample blocks) all four effects plus 12 voices use about
-27% of the budget. The optimised code is checked against frozen copies of the original
+33% of the budget; the numbers vary by machine, so run `bench.py` to measure your own. The optimised code is checked against frozen copies of the original
 implementations in `tests/reference_dsp.py`.
 
 ## Offline render (no audio device)

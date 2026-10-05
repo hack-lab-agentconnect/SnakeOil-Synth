@@ -1,8 +1,11 @@
 """Checks that pyproject.toml stays consistent with the source tree."""
 import importlib
 import re
-import tomllib
 from pathlib import Path
+
+import pytest
+
+tomllib = pytest.importorskip("tomllib")
 
 ROOT = Path(__file__).resolve().parent.parent
 

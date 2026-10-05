@@ -434,6 +434,8 @@ class SynthEngine:
                 v.gate = False
                 v.env.stage = IDLE
                 v.env.level = 0.0
+                v.flt_env.stage = IDLE
+                v.flt_env.level = 0.0
             self._sustained.clear()
             self.sustain = False
 

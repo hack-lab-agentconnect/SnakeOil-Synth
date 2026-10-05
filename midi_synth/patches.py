@@ -1,4 +1,5 @@
 import json
+import math
 import os
 from pathlib import Path
 
@@ -41,8 +42,10 @@ def apply(registry, values, defaults):
         else:
             continue
         try:
+            if isinstance(value, float) and not math.isfinite(value):
+                raise ValueError("not a finite number")
             registry.set(pid, value)
-        except (ValueError, TypeError) as exc:
+        except (ValueError, TypeError, OverflowError, ArithmeticError) as exc:
             warnings.append("Skipped invalid value for %s: %s" % (pid, exc))
     return warnings
 
@@ -123,6 +126,12 @@ class PatchStore:
 
     def save(self, name, values):
         name = self._valid_name(name)
+        if name.lower() == INIT_NAME.lower():
+            raise PatchError("the Init patch is read-only")
+        self._write(name, values)
+
+    def _write(self, name, values):
+        name = self._valid_name(name)
         path = self._find(name) or (self.patches_dir / (name + ".json"))
         _atomic_write_json(path, {
             "version": CURRENT_VERSION, "name": path.stem, "params": dict(values)})
@@ -171,10 +180,10 @@ class PatchStore:
 
     def ensure_init(self, defaults):
         if self._find(INIT_NAME) is None:
-            self.save(INIT_NAME, defaults)
+            self._write(INIT_NAME, defaults)
 
     def reset_init(self, defaults):
-        self.save(INIT_NAME, defaults)
+        self._write(INIT_NAME, defaults)
 
     def last_used(self):
         try:
