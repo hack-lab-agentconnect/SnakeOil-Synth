@@ -66,6 +66,7 @@ def render_osc1(engine, note=57, blocks=20):
 def test_layer_off_is_bit_identical_to_saw_only():
     a = SynthEngine(sr=SR, block_size=BLOCK, max_voices=2)
     b = SynthEngine(sr=SR, block_size=BLOCK, max_voices=2)
+    a.set_osc1_square(False)
     b.set_osc1_square(True)
     b.set_osc1_square(False)
     b.set_osc1_pwm(0.2)  # PWM must not matter while the layer is off
@@ -79,6 +80,7 @@ def test_layer_off_is_bit_identical_to_saw_only():
 def test_layer_toggle_changes_output_and_is_bounded():
     a = SynthEngine(sr=SR, block_size=BLOCK, max_voices=2)
     b = SynthEngine(sr=SR, block_size=BLOCK, max_voices=2)
+    a.set_osc1_square(False)
     b.set_osc1_square(True)
     out_a, out_b = render_osc1(a), render_osc1(b)
     assert not np.allclose(out_a, out_b)
@@ -131,6 +133,7 @@ def test_pwm_setters_clamp():
     e.set_osc1_pwm(-1)
     e.set_osc2_pwm(2)
     assert e.params["osc1_pwm"] == 0.0 and e.params["osc2_pwm"] == 0.5
+    e.set_osc1_square(False)
     st = e.status()
     assert st["osc1_pwm"] == 0.0 and st["osc2_pwm"] == 0.5 and st["osc1_square"] is False
 

@@ -2,14 +2,14 @@ import argparse
 import sys
 import wave
 
-from midi_synth.config import SAMPLE_RATE, BLOCK_SIZE, MODES
+from midi_synth.config import SAMPLE_RATE, BLOCK_SIZE, MODES, DEFAULT_PWM
 from midi_synth.engine import SynthEngine
 
 
 def build_engine(args):
     engine = SynthEngine(sr=args.samplerate, block_size=args.blocksize,
                          max_voices=args.voices)
-    engine.set_osc1_square(args.square_layer)
+    engine.set_osc1_square(not args.no_square_layer)
     engine.set_osc1_pwm(args.pwm1)
     engine.set_osc2_pwm(args.pwm2)
     engine.set_osc_levels(args.level1, args.level2)
@@ -57,9 +57,9 @@ def parse_args(argv):
     p.add_argument("--voices", type=int, default=12)
     p.add_argument("--notes", default="48,52,55,59,60,64,67,71,72,76,79,83",
                    help="comma-separated MIDI note numbers (up to 12)")
-    p.add_argument("--square-layer", action="store_true", help="layer a square over osc 1's saw")
-    p.add_argument("--pwm1", type=float, default=0.5, help="osc 1 square-layer duty (0-0.5)")
-    p.add_argument("--pwm2", type=float, default=0.5, help="osc 2 square duty (0-0.5)")
+    p.add_argument("--no-square-layer", action="store_true", help="turn off the square layer over osc 1's saw")
+    p.add_argument("--pwm1", type=float, default=DEFAULT_PWM, help="osc 1 square-layer duty (0-0.5)")
+    p.add_argument("--pwm2", type=float, default=DEFAULT_PWM, help="osc 2 square duty (0-0.5)")
     p.add_argument("--level1", type=float, default=1.0)
     p.add_argument("--level2", type=float, default=0.0)
     p.add_argument("--mode", choices=MODES, default="fm")

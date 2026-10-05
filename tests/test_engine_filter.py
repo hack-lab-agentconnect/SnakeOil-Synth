@@ -15,8 +15,14 @@ def make():
     return SynthEngine(sr=44100, block_size=256, max_voices=2)
 
 
-def test_default_is_bypassed_and_unchanged():
-    a, b = make(), make()
+def make_bypassed():
+    e = make()
+    e.set_lpf_cutoff(20000.0)
+    return e
+
+
+def test_max_cutoff_is_bypassed_and_deterministic():
+    a, b = make_bypassed(), make_bypassed()
     assert a.params["lpf_cutoff"] == 20000.0
     assert a.params["lpf_coeffs"] is None
     a.note_on(60, 100)
@@ -26,8 +32,8 @@ def test_default_is_bypassed_and_unchanged():
 
 @pytest.mark.parametrize("mode", ["voice", "master"])
 def test_high_note_attenuated_low_note_passes(mode):
-    base_low = rms_after(make(), 36)
-    base_high = rms_after(make(), 96)
+    base_low = rms_after(make_bypassed(), 36)
+    base_high = rms_after(make_bypassed(), 96)
     e = make()
     e.set_lpf_mode(mode)
     e.set_lpf_cutoff(200.0)

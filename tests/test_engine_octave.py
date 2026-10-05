@@ -34,6 +34,7 @@ def test_osc2_octave_up_doubles_pitch():
     e = make()
     e.set_osc_levels(0.0, 1.0)
     e.set_mod_mode("off")
+    e.set_osc2_octave_up(False)
     assert abs(peak_hz(e) - 440.0) < 6.0
     e = make()
     e.set_osc_levels(0.0, 1.0)
@@ -51,8 +52,11 @@ def test_osc2_stays_relative_to_played_note_with_both_on():
     assert abs(peak_hz(e) - 880.0) < 6.0
 
 
-def test_both_off_matches_fresh_engine():
+def test_both_off_after_toggling_matches_never_toggled():
     a, b = make(), make()
+    for e in (a, b):
+        e.set_osc1_octave_down(False)
+        e.set_osc2_octave_up(False)
     a.set_osc1_octave_down(True)
     a.set_osc2_octave_up(True)
     a.set_osc1_octave_down(False)
@@ -80,12 +84,15 @@ def test_sync_with_octaves_is_finite():
             assert np.all(np.isfinite(e.render(BLOCK)))
 
 
-def test_registry_maps_to_engine_and_defaults_off():
+def test_registry_maps_to_engine_and_defaults():
     e = make()
     reg = build_registry(e)
     assert reg.get("osc1_octave") is False
-    assert reg.get("osc2_octave") is False
+    assert reg.get("osc2_octave") is True
     reg.set("osc1_octave", True)
+    reg.set("osc2_octave", False)
+    assert e.params["osc1_octave_down"] is True
+    assert e.params["osc2_octave_up"] is False
     reg.set("osc2_octave", True)
     assert e.params["osc1_octave_down"] is True
     assert e.params["osc2_octave_up"] is True

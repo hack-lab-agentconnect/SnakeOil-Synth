@@ -16,8 +16,9 @@ from .config import (
     CENTS_MIN,
     CENTS_MAX,
     LPF_MODES,
-    DEFAULT_DUTY,
+    DEFAULT_PWM,
     DEFAULT_LPF_MODE,
+    DEFAULT_LPF_CUTOFF,
 )
 from .filters import LowPass, LPF_MIN_HZ, LPF_MAX_HZ, lpf_coefficients
 from .voice import Voice
@@ -36,25 +37,26 @@ class SynthEngine:
         self.params = {
             "osc1_level": 1.0,
             "osc2_level": 0.0,
-            "osc1_square": False,
-            "osc1_pwm": DEFAULT_DUTY,
-            "osc2_pwm": DEFAULT_DUTY,
+            "osc1_square": True,
+            "osc1_pwm": DEFAULT_PWM,
+            "osc2_pwm": DEFAULT_PWM,
             "mod_mode": DEFAULT_MODE,
             "fm_depth": 0.0,
             "mod_index": 0.0,
             "detune2_semitones": 0.0,
             "detune2_cents": 0.0,
             "osc1_octave_down": False,
-            "osc2_octave_up": False,
+            "osc2_octave_up": True,
             "pitch_bend": 0.0,
             "pitch_ratio": 1.0,
             "master_gain": 0.8,
-            "lpf_cutoff": LPF_MAX_HZ,
+            "lpf_cutoff": DEFAULT_LPF_CUTOFF,
             "lpf_resonance": 0.0,
             "lpf_mode": DEFAULT_LPF_MODE,
             "lpf_coeffs": None,
         }
         self._order = 0
+        self._update_lpf()
 
     def _refresh_derived(self):
         self.params["mod_index"] = self.params["fm_depth"] * FM_INDEX_MAX

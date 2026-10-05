@@ -4,6 +4,7 @@ MAX_VOICES = 12
 
 MIN_DUTY = 0.02
 DEFAULT_DUTY = 0.5
+DEFAULT_PWM = 0.0
 LAYER_GAIN = 0.6
 
 MODES = ("off", "fm", "am", "ring", "sync")
@@ -17,6 +18,7 @@ CENTS_MAX = 0.5
 
 LPF_MODES = ("voice", "master")
 DEFAULT_LPF_MODE = "voice"
+DEFAULT_LPF_CUTOFF = 2000.0
 
 FM_INDEX_MAX = 8.0
 PITCH_BEND_RANGE = 2.0

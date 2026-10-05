@@ -107,12 +107,12 @@ def test_pwm_and_square_params_defaults_and_ranges(rig):
     engine, reg = rig
     for pid in ("osc1_pwm", "osc2_pwm"):
         assert reg[pid].minimum == 0.0 and reg[pid].maximum == 0.5
-        assert reg.get(pid) == 0.5
+        assert reg.get(pid) == 0.0
     assert reg["osc1_pwm"].group == "Oscillator 1"
     assert reg["osc2_pwm"].group == "Oscillator 2"
     assert reg["osc1_square"].kind == "toggle"
     assert reg["osc1_square"].group == "Oscillator 1"
-    assert reg.get("osc1_square") is False
+    assert reg.get("osc1_square") is True
 
 
 def test_pwm_and_square_params_reach_engine(rig):

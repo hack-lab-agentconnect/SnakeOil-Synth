@@ -10,16 +10,16 @@ toggleable effects chain.
 
 - MIDI input from **all connected input ports** (or a named port / single channel).
 - Polyphony up to **12 simultaneous notes**.
-- Oscillators (band-limited with PolyBLEP): **osc 1 is a saw** with an optional **square layer**; **osc 2 is a square**. Both squares have **PWM** (pulse width 0-0.5, where 0.5 is a plain square).
+- Oscillators (band-limited with PolyBLEP): **osc 1 is a saw** with a **square layer** (on by default, can be switched off); **osc 2 is a square**. Both squares have **PWM** (pulse width 0-0.5, where 0.5 is a plain square). PWM defaults to 0, the narrowest pulse the engine allows (a duty of 0.02).
 - **Second oscillator is phase-modulated (FM) by the first oscillator's output.**
 - Second oscillator **coarse tuning −12..+12 semitones** plus **fine tuning ±0.5 cents**.
-- **Octave switches:** osc 1 can play one octave down, osc 2 one octave up (relative to the played note, on top of its tuning).
+- **Octave switches:** osc 1 can play one octave down, osc 2 one octave up (relative to the played note, on top of its tuning). Osc 2's octave-up switch is on by default.
 - Toggleable effects: **Chorus, Delay, Reverb, Bitcrush**. In the GUI each has a
   dial under its button: chorus **Depth** (how far the delay swings; the LFO rate is fixed
   at 0.5 Hz), delay **Time** (200-4000 ms, log scale), reverb **Amount** (wet
   level) and bitcrush **Crush** (bit depth and downsampling together). The dials
   have no default MIDI CC; use MIDI Learn to bind them.
-- Resonant 12 dB/oct **low-pass filter** (cutoff + resonance), per voice or on the master bus.
+- Resonant 12 dB/oct **low-pass filter** (cutoff + resonance), per voice or on the master bus. The filter is on by default at **2000 Hz**; turning the cutoff fully right (20 kHz) bypasses it.
 - Pitch-bend and velocity support; per-voice ADSR envelope.
 
 ## Install
@@ -106,17 +106,17 @@ chorusdepth <0-1>   # chorus depth (default 0.3; LFO rate fixed at 0.5 Hz)
 delaytime <200-4000>  # delay time in ms (default 300)
 reverbamt <0-1>     # reverb wet amount (default 0.3)
 crush <0-1>         # bitcrush amount: bit depth and downsampling (default 0.5)
-square <on|off>     # oscillator 1 square layer over the saw
-pwm1 <0-0.5>        # oscillator 1 square-layer pulse width (0.5 = square)
-pwm2 <0-0.5>        # oscillator 2 pulse width (0.5 = square)
+square <on|off>     # oscillator 1 square layer over the saw (default on)
+pwm1 <0-0.5>        # oscillator 1 square-layer pulse width (default 0; 0.5 = plain square)
+pwm2 <0-0.5>        # oscillator 2 pulse width (default 0; 0.5 = plain square)
 level1/level2 <0-1>  # oscillator mix level (osc2 starts at 0)
 mode <off|fm|am|ring|sync>  # how osc1 modulates osc2
 mod <0-1>           # modulation amount (alias: fm)
 tune2 <-12..12>     # oscillator-2 coarse semitones
 cents2 <-0.5..0.5>  # oscillator-2 fine cents
 oct1 <on|off>       # oscillator 1 one octave down
-oct2 <on|off>       # oscillator 2 one octave up
-lpf <20-20000>      # low-pass cutoff in Hz (20000 = off)
+oct2 <on|off>       # oscillator 2 one octave up (default on)
+lpf <20-20000>      # low-pass cutoff in Hz (default 2000; 20000 = off)
 lres <0-1>          # low-pass resonance
 lpfmode <voice|master>  # filter placement
 gain <0-1.2>
@@ -179,7 +179,7 @@ note ─▶ ADSR ─▶ osc1 ──┬──────────────
 ## Offline render (no audio device)
 
 ```bash
-python render_demo.py --out demo.wav --effects reverb,delay --square-layer --pwm1 0.3 --mode ring --fm 0.7 --level2 0.6
+python render_demo.py --out demo.wav --effects reverb,delay --pwm1 0.3 --mode ring --fm 0.7 --level2 0.6
 ```
 
 Renders a 12-note chord to a WAV file using only NumPy and the standard library.
