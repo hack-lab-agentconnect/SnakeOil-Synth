@@ -4,15 +4,37 @@ import pytest
 from midi_synth.effects import Bitcrusher, Chorus, Delay, EffectChain, Reverb
 
 
-def test_chorus_default_rate_and_clamp():
+def test_chorus_depth_clamp_and_default():
     sr = 44100
     c = Chorus(sr)
-    assert c.rate == 1.0
-    c.set_rate(50)
-    assert c.rate == 10.0
-    assert c.inc == pytest.approx(2 * np.pi * 10 / sr)
-    c.set_rate(0.1)
-    assert c.rate == 1.0
+    assert c.amount == 0.3
+    assert c.rate == 0.5
+    c.set_depth(5)
+    assert c.amount == 1.0
+    assert c.depth == pytest.approx(8.0 * sr / 1000)
+    c.set_depth(0)
+    assert c.depth == 0.0
+
+
+def test_chorus_depth_changes_output():
+    sr = 44100
+    t = np.arange(sr // 4) / sr
+    x = np.sin(2 * np.pi * 440 * t)
+    outs = []
+    for amount in (0.0, 1.0):
+        c = Chorus(sr, enabled=True)
+        c.set_depth(amount)
+        outs.append(c.process(x))
+    assert np.all(np.isfinite(outs[0])) and np.all(np.isfinite(outs[1]))
+    assert not np.allclose(outs[0], outs[1])
+
+
+def test_chorus_buffer_fits_max_depth():
+    sr = 44100
+    c = Chorus(sr, enabled=True)
+    c.set_depth(1.0)
+    out = c.process(np.random.default_rng(0).uniform(-1, 1, sr))
+    assert np.all(np.isfinite(out))
 
 
 def _impulse_echo_index(time_ms, n):

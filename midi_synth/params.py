@@ -126,10 +126,11 @@ def build_registry(engine):
     fx = engine.effects
     dials = {
         "chorus": Param(
-            id="fx_chorus_rate", label="Rate", group="Effects", kind=CONTINUOUS,
-            minimum=1.0, maximum=10.0, fmt="{:.1f} Hz", under="fx_chorus",
-            get=lambda: fx.chorus.rate, set=engine.set_chorus_rate,
-            tooltip="Chorus LFO speed."),
+            id="fx_chorus_depth", label="Depth", group="Effects", kind=CONTINUOUS,
+            minimum=0.0, maximum=1.0, fmt="{:.2f}", under="fx_chorus",
+            get=lambda: fx.chorus.amount, set=engine.set_chorus_depth,
+            tooltip="How far the chorus delay swings. Low = subtle "
+                    "thickening, high = obvious wobble."),
         "delay": Param(
             id="fx_delay_time", label="Time", group="Effects", kind=CONTINUOUS,
             minimum=200.0, maximum=4000.0, scale="log", fmt="{:.0f} ms",

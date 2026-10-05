@@ -74,7 +74,7 @@ def list_devices():
 
 HELP_TEXT = """commands:
   fx <chorus|delay|reverb|bitcrush> <on|off|toggle>
-  chorusrate <1-10>          chorus LFO rate in Hz
+  chorusdepth <0-1>          chorus depth (default 0.3)
   delaytime <200-4000>       delay time in ms
   reverbamt <0-1>            reverb wet amount
   crush <0-1>                bitcrush amount (bit depth and downsampling)
@@ -133,8 +133,8 @@ def console_loop(engine):
                 engine.set_detune2(engine.params["detune2_semitones"], float(parts[1]))
             elif cmd == "gain":
                 engine.set_master_gain(float(parts[1]))
-            elif cmd == "chorusrate":
-                engine.set_chorus_rate(float(parts[1]))
+            elif cmd == "chorusdepth":
+                engine.set_chorus_depth(float(parts[1]))
             elif cmd == "delaytime":
                 engine.set_delay_time(min(max(float(parts[1]), 200.0), 4000.0))
             elif cmd == "reverbamt":

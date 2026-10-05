@@ -128,7 +128,7 @@ def test_pwm_and_square_params_reach_engine(rig):
 
 
 DIALS = {
-    "fx_chorus_rate": ("fx_chorus", "Rate", 1.0, 10.0, 1.0),
+    "fx_chorus_depth": ("fx_chorus", "Depth", 0.0, 1.0, 0.3),
     "fx_delay_time": ("fx_delay", "Time", 200.0, 4000.0, 300.0),
     "fx_reverb_amount": ("fx_reverb", "Amount", 0.0, 1.0, 0.3),
     "fx_bitcrush_amount": ("fx_bitcrush", "Crush", 0.0, 1.0, 0.5),
@@ -159,8 +159,8 @@ def test_delay_time_is_log_mapped_from_midi(rig):
 
 def test_effect_dials_reach_effects(rig):
     engine, reg = rig
-    reg.set("fx_chorus_rate", 5.0)
-    assert engine.effects.chorus.rate == 5.0
+    reg.set("fx_chorus_depth", 0.6)
+    assert engine.effects.chorus.amount == 0.6
     reg.set("fx_delay_time", 1000.0)
     assert engine.effects.delay.time_ms == 1000.0
     reg.set("fx_delay_time", 5.0)
@@ -174,12 +174,18 @@ def test_effect_dials_reach_effects(rig):
 
 def test_engine_status_includes_dials(rig):
     engine, reg = rig
-    reg.set("fx_chorus_rate", 4.0)
+    reg.set("fx_chorus_depth", 0.7)
     reg.set("fx_delay_time", 800.0)
     reg.set("fx_reverb_amount", 0.6)
     reg.set("fx_bitcrush_amount", 0.25)
     s = engine.status()
-    assert s["chorus_rate"] == 4.0
+    assert s["chorus_depth"] == 0.7
+    assert "chorus_rate" not in s
     assert s["delay_time"] == 800.0
     assert s["reverb_amount"] == 0.6
     assert s["crush_amount"] == 0.25
+
+
+def test_chorus_rate_param_removed(rig):
+    _, reg = rig
+    assert "fx_chorus_rate" not in [p.id for p in reg]

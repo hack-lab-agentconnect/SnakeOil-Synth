@@ -193,9 +193,9 @@ class SynthEngine:
         with self.lock:
             self.effects.get(name).enabled = bool(enabled)
 
-    def set_chorus_rate(self, hz):
+    def set_chorus_depth(self, a):
         with self.lock:
-            self.effects.chorus.set_rate(hz)
+            self.effects.chorus.set_depth(a)
 
     def set_delay_time(self, ms):
         with self.lock:
@@ -254,7 +254,7 @@ class SynthEngine:
                 "lpf_cutoff": self.params["lpf_cutoff"],
                 "lpf_resonance": self.params["lpf_resonance"],
                 "lpf_mode": self.params["lpf_mode"],
-                "chorus_rate": self.effects.chorus.rate,
+                "chorus_depth": self.effects.chorus.amount,
                 "delay_time": self.effects.delay.time_ms,
                 "reverb_amount": self.effects.reverb.mix,
                 "crush_amount": self.effects.bitcrush.amount,

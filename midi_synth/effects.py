@@ -3,25 +3,28 @@ import numpy as np
 TWO_PI = 2.0 * np.pi
 
 
+CHORUS_MAX_DEPTH_MS = 8.0
+
+
 class Chorus:
-    def __init__(self, sr, enabled=False, mix=0.5, rate=1.0, depth_ms=6.0,
+    def __init__(self, sr, enabled=False, mix=0.5, rate=0.5, amount=0.3,
                  base_ms=14.0, feedback=0.15):
         self.sr = sr
         self.enabled = enabled
         self.mix = mix
         self.feedback = feedback
         self.base = base_ms * sr / 1000.0
-        self.depth = depth_ms * sr / 1000.0
         self.rate = rate
         self.inc = TWO_PI * rate / sr
-        maxlen = int((base_ms + depth_ms + 5.0) * sr / 1000.0) + 4
+        self.set_depth(amount)
+        maxlen = int((base_ms + CHORUS_MAX_DEPTH_MS + 5.0) * sr / 1000.0) + 4
         self.buf = np.zeros(maxlen, dtype=np.float64)
         self.idx = 0
         self.phase = 0.0
 
-    def set_rate(self, hz):
-        self.rate = min(max(float(hz), 1.0), 10.0)
-        self.inc = TWO_PI * self.rate / self.sr
+    def set_depth(self, a):
+        self.amount = min(max(float(a), 0.0), 1.0)
+        self.depth = self.amount * CHORUS_MAX_DEPTH_MS * self.sr / 1000.0
 
     def process(self, x):
         if not self.enabled:

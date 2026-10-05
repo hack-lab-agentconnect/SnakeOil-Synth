@@ -15,8 +15,8 @@ toggleable effects chain.
 - Second oscillator **coarse tuning −12..+12 semitones** plus **fine tuning ±0.5 cents**.
 - **Octave switches:** osc 1 can play one octave down, osc 2 one octave up (relative to the played note, on top of its tuning).
 - Toggleable effects: **Chorus, Delay, Reverb, Bitcrush**. In the GUI each has a
-  dial under its button: chorus **Rate** (1-10 Hz; the default rate is now 1.0 Hz,
-  up from 0.5), delay **Time** (200-4000 ms, log scale), reverb **Amount** (wet
+  dial under its button: chorus **Depth** (how far the delay swings; the LFO rate is fixed
+  at 0.5 Hz), delay **Time** (200-4000 ms, log scale), reverb **Amount** (wet
   level) and bitcrush **Crush** (bit depth and downsampling together). The dials
   have no default MIDI CC; use MIDI Learn to bind them.
 - Resonant 12 dB/oct **low-pass filter** (cutoff + resonance), per voice or on the master bus.
@@ -102,7 +102,7 @@ An interactive console starts alongside the audio. Type `help`. Commands:
 
 ```
 fx <chorus|delay|reverb|bitcrush> <on|off|toggle>
-chorusrate <1-10>   # chorus LFO rate in Hz (default 1.0)
+chorusdepth <0-1>   # chorus depth (default 0.3; LFO rate fixed at 0.5 Hz)
 delaytime <200-4000>  # delay time in ms (default 300)
 reverbamt <0-1>     # reverb wet amount (default 0.3)
 crush <0-1>         # bitcrush amount: bit depth and downsampling (default 0.5)
