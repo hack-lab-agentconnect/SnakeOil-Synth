@@ -67,3 +67,11 @@ def test_pitchwheel_and_program_change(rig):
     assert engine.params["pitch_bend"] > 1.9
     midi._on_message(mido.Message("program_change", program=64))
     assert engine.params["osc1_waveform"] == "triangle"
+
+
+def test_note_off_after_rebinding_does_not_stick(rig):
+    engine, midi = rig
+    midi._on_message(mido.Message("note_on", note=60, velocity=100))
+    midi.router.profile.bind(Source(NOTE, 60, None), "fx_delay")
+    midi._on_message(mido.Message("note_off", note=60))
+    assert not any(v.gate for v in engine.voices)

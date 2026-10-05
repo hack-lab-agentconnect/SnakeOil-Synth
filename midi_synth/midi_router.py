@@ -32,6 +32,7 @@ class MidiRouter:
         with self._lock:
             self._profile = profile
             self._armed = None
+            self.registry.reset_pressed()
 
     def arm(self, param_id):
         if param_id not in self.registry:
@@ -90,7 +91,7 @@ class MidiRouter:
         if self.on_profile_changed:
             try:
                 self.on_profile_changed(self._profile)
-            except OSError as exc:
+            except Exception as exc:
                 self._message("Could not save profile: %s" % exc)
 
     def _message(self, text):

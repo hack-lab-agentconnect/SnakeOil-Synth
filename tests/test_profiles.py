@@ -144,3 +144,14 @@ def test_open_active_recovers_corrupt_default(store):
 def test_settings_file_corruption_ignored(store):
     store.settings_path.write_text("{{{")
     assert store.active_name() == DEFAULT_NAME
+
+
+def test_open_active_warns_when_preferred_missing(store):
+    p = store.open_active("nope")
+    assert p.name == "Default"
+    assert any("nope" in w and "Default" in w for w in store.warnings)
+
+
+def test_names_ignores_tmp_and_saves_leave_no_tmp(store):
+    store.save(default_profile())
+    assert not list(store.profiles_dir.glob("*.tmp"))

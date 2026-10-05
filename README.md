@@ -40,6 +40,8 @@ python run.py                   # listen on all MIDI ports, auto-pick the lowest
 python run.py --input "Launchkey" --channel 1
 ```
 
+`--channel` takes 1-16 (the channel filter is one-based).
+
 ## GUI and MIDI learn
 
 The window opens by default; use `--no-gui` for the console only.

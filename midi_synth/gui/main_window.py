@@ -124,7 +124,10 @@ class MainWindow(QMainWindow):
             self._reload_profiles(self.router.profile.name)
             return
         self.router.set_profile(profile)
-        self.store.set_active(profile.name)
+        try:
+            self.store.set_active(profile.name)
+        except OSError as exc:
+            self.statusBar().showMessage(str(exc), 6000)
         self._clear_learning_state()
         self._reload_profiles(profile.name)
         self._refresh_badges()
@@ -136,7 +139,7 @@ class MainWindow(QMainWindow):
     def _run_store_action(self, action):
         try:
             return action()
-        except ProfileError as exc:
+        except (ProfileError, OSError) as exc:
             QMessageBox.warning(self, "Profile", str(exc))
             return None
 
@@ -154,22 +157,25 @@ class MainWindow(QMainWindow):
     def _rename_profile(self):
         current = self.profile_box.currentText()
         name = self._ask_name("Rename profile", current)
-        if name and self._run_store_action(lambda: self.store.rename(current, name) or True):
+        if not name:
+            return
+        self.router.disarm()
+        if self._run_store_action(lambda: self.store.rename(current, name) or True):
             self._switch(name)
 
     def _delete_profile(self):
         current = self.profile_box.currentText()
         answer = QMessageBox.question(self, "Delete profile", "Delete profile '%s'?" % current)
-        if answer == QMessageBox.Yes and self._run_store_action(
-                lambda: self.store.delete(current) or True):
+        if answer == QMessageBox.Yes:
             self._switch(DEFAULT_NAME)
+            self._run_store_action(lambda: self.store.delete(current))
 
     def _reset_default(self):
         answer = QMessageBox.question(
             self, "Reset Default", "Restore the Default profile to factory bindings?")
         if answer == QMessageBox.Yes:
-            self.store.reset_default()
-            self._switch(DEFAULT_NAME)
+            if self._run_store_action(lambda: self.store.reset_default() or True):
+                self._switch(DEFAULT_NAME)
 
     # ---- learn --------------------------------------------------------
 

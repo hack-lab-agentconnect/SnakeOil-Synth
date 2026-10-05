@@ -55,8 +55,8 @@ class MidiInput:
                 if not self.router.handle_note(msg.channel, msg.note, msg.velocity, True):
                     self.engine.note_on(msg.note, msg.velocity)
             elif msg.type == "note_off" or (msg.type == "note_on" and msg.velocity == 0):
-                if not self.router.handle_note(msg.channel, msg.note, 0, False):
-                    self.engine.note_off(msg.note)
+                self.router.handle_note(msg.channel, msg.note, 0, False)
+                self.engine.note_off(msg.note)
             elif msg.type == "control_change":
                 self.router.handle_cc(msg.channel, msg.control, msg.value)
             elif msg.type == "pitchwheel":

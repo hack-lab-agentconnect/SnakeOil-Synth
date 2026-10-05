@@ -86,6 +86,9 @@ class ParamRegistry:
         idx = min(max(value, 0) * len(param.choices) // 128, len(param.choices) - 1)
         return param.choices[idx]
 
+    def reset_pressed(self):
+        self._pressed.clear()
+
     def apply_midi(self, param_id, value):
         param = self._params[param_id]
         if param.kind == TOGGLE:

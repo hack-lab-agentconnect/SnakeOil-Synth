@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 
 from midi_synth.config import SAMPLE_RATE, BLOCK_SIZE, MAX_VOICES, WAVEFORMS
+from midi_synth.bindings import default_profile
 from midi_synth.engine import SynthEngine
 from midi_synth.midi_input import MidiInput
 from midi_synth.midi_router import MidiRouter
@@ -168,13 +169,13 @@ def open_output_stream(sd, choice, args, samplerate, callback):
         raise
 
 
-def launch_gui(engine, registry, router, store, ports):
+def launch_gui(engine, registry, router, store, ports, on_exit=None):
     try:
         from midi_synth.gui.app import run_gui
     except ImportError as exc:
         print("GUI unavailable (%s); using the console. Install it with: pip install PySide6" % exc)
         return False
-    run_gui(engine, registry, router, store, ports)
+    run_gui(engine, registry, router, store, ports, on_exit)
     return True
 
 
@@ -213,12 +214,18 @@ def main(argv=None):
                          max_voices=args.voices)
 
     store = ProfileStore(Path(args.config_dir) if args.config_dir else default_config_dir())
-    profile = store.open_active(args.profile)
+    try:
+        profile = store.open_active(args.profile)
+        saving = True
+    except OSError as exc:
+        print("Profiles unavailable (%s); using in-memory defaults, nothing will be saved" % exc)
+        profile = default_profile()
+        saving = False
     for warning in store.warnings:
         print("Profiles: %s" % warning)
     registry = build_registry(engine)
     router = MidiRouter(registry, profile)
-    router.on_profile_changed = store.save
+    router.on_profile_changed = store.save if saving else None
     midi = MidiInput(engine, ports=args.input, channel=args.channel, router=router)
     opened = []
     try:
@@ -255,7 +262,7 @@ def main(argv=None):
         pass
     print("Playing. Press Ctrl+C to stop.")
     try:
-        if not args.no_gui and launch_gui(engine, registry, router, store, opened):
+        if not args.no_gui and launch_gui(engine, registry, router, store, opened, midi.stop):
             pass
         elif args.no_console:
             while True:

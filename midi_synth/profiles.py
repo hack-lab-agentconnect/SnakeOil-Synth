@@ -2,6 +2,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 from .bindings import Profile, default_profile, DEFAULT_NAME
@@ -40,9 +41,17 @@ def validate_name(name):
 
 def _atomic_write_json(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    os.replace(tmp, path)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(json.dumps(data, indent=2))
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 class ProfileStore:
@@ -67,7 +76,7 @@ class ProfileStore:
 
     def _read(self, path):
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = json.loads(path.read_text(encoding="utf-8-sig"))
             return Profile.from_dict(path.stem, data)
         except (OSError, ValueError) as exc:
             raise ProfileError("%s: %s" % (path.name, exc))
@@ -145,7 +154,7 @@ class ProfileStore:
 
     def active_name(self):
         try:
-            data = json.loads(self.settings_path.read_text(encoding="utf-8"))
+            data = json.loads(self.settings_path.read_text(encoding="utf-8-sig"))
             return str(data.get("active") or DEFAULT_NAME)
         except (OSError, ValueError, AttributeError):
             return DEFAULT_NAME
@@ -164,6 +173,8 @@ class ProfileStore:
                 if name.lower() == DEFAULT_NAME.lower():
                     self._warn("Default profile was unreadable (%s); restored defaults" % exc)
                 continue
+            if preferred and name != preferred:
+                self._warn("Profile %r not found; using %s" % (preferred, profile.name))
             self.set_active(profile.name)
             return profile
         self.reset_default()
