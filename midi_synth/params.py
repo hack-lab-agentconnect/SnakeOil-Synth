@@ -9,6 +9,7 @@ from .config import (
     CENTS_MIN,
     CENTS_MAX,
 )
+from .filters import HPF_MIN_HZ, HPF_MAX_HZ
 
 CONTINUOUS = "continuous"
 TOGGLE = "toggle"
@@ -31,6 +32,8 @@ class Param:
     choices: Tuple[str, ...] = ()
     fmt: str = "{:.2f}"
     affects: Tuple[str, ...] = ()
+    scale: str = "linear"
+    tooltip: str = ""
 
 
 class ParamRegistry:
@@ -80,7 +83,10 @@ class ParamRegistry:
         param = self._params[param_id]
         value = int(value)
         if param.kind == CONTINUOUS:
-            return param.minimum + (param.maximum - param.minimum) * min(max(value, 0), 127) / 127.0
+            frac = min(max(value, 0), 127) / 127.0
+            if param.scale == "log":
+                return param.minimum * (param.maximum / param.minimum) ** frac
+            return param.minimum + (param.maximum - param.minimum) * frac
         if param.kind == TOGGLE:
             return value >= 64
         idx = min(max(value, 0) * len(param.choices) // 128, len(param.choices) - 1)
@@ -141,6 +147,17 @@ def build_registry(engine):
               affects=("fm_depth",)),
         Param(id="fm_depth", label="Amount", group="Modulation", kind=CONTINUOUS,
               get=lambda: p["fm_depth"], set=engine.set_fm_depth),
+        Param(id="hpf_cutoff", label="Cutoff", group="Filter", kind=CONTINUOUS,
+              minimum=HPF_MIN_HZ, maximum=HPF_MAX_HZ, scale="log", fmt="{:.0f} Hz",
+              get=lambda: p["hpf_cutoff"], set=engine.set_hpf_cutoff,
+              tooltip="High-pass cutoff. Fully left = filter off."),
+        Param(id="hpf_resonance", label="Resonance", group="Filter", kind=CONTINUOUS,
+              get=lambda: p["hpf_resonance"], set=engine.set_hpf_resonance),
+        Param(id="hpf_master", label="Master-bus filter", group="Filter", kind=TOGGLE,
+              get=lambda: p["hpf_mode"] == "master",
+              set=lambda v: engine.set_hpf_mode("master" if v else "voice"),
+              tooltip="Off: one filter per voice. On: a single filter on the whole mix "
+                      "(lighter on the CPU; use it if audio glitches)."),
         Param(id="master_gain", label="Volume", group="Master", kind=CONTINUOUS,
               maximum=MASTER_GAIN_MAX, get=lambda: p["master_gain"],
               set=engine.set_master_gain),

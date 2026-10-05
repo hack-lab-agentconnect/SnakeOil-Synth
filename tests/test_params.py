@@ -78,3 +78,23 @@ def test_ids_cover_every_group(rig):
         "detune2_semitones", "detune2_cents", "mod_mode", "fm_depth",
         "master_gain", "fx_chorus", "fx_delay", "fx_reverb", "fx_bitcrush",
     }
+
+
+def test_hpf_cutoff_is_log_mapped_from_midi(rig):
+    _, reg = rig
+    assert reg.from_midi("hpf_cutoff", 0) == pytest.approx(20.0)
+    assert reg.from_midi("hpf_cutoff", 127) == pytest.approx(8000.0)
+    assert 380.0 < reg.from_midi("hpf_cutoff", 64) < 440.0
+
+
+def test_hpf_params_write_engine(rig):
+    engine, reg = rig
+    reg.set("hpf_cutoff", 1000.0)
+    reg.set("hpf_resonance", 0.5)
+    assert engine.params["hpf_cutoff"] == 1000.0
+    assert engine.params["hpf_resonance"] == 0.5
+    assert reg.get("hpf_master") is False
+    reg.set("hpf_master", True)
+    assert engine.params["hpf_mode"] == "master"
+    reg.set("hpf_master", False)
+    assert engine.params["hpf_mode"] == "voice"

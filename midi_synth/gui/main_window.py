@@ -12,8 +12,9 @@ GROUP_POSITIONS = {
     "Oscillator 1": (0, 0, 1, 1),
     "Oscillator 2": (0, 1, 1, 1),
     "Modulation": (0, 2, 1, 1),
+    "Master": (0, 3, 1, 1),
     "Effects": (1, 0, 1, 2),
-    "Master": (1, 2, 1, 1),
+    "Filter": (1, 2, 1, 2),
 }
 
 

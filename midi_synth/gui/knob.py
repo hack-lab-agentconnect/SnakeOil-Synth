@@ -14,15 +14,16 @@ class Knob(QWidget):
 
     valueChanged = Signal(float)
 
-    def __init__(self, minimum=0.0, maximum=1.0, value=None, formatter=None, parent=None):
+    def __init__(self, minimum=0.0, maximum=1.0, value=None, formatter=None, log=False, parent=None):
         super().__init__(parent)
         self._min = float(minimum)
         self._max = float(maximum)
+        self._log = bool(log)
         self._value = self._clamp(self._min if value is None else value)
         self._default = self._value
         self._formatter = formatter or (lambda v: "%.2f" % v)
         self._drag_y = None
-        self._drag_start = 0.0
+        self._drag_frac = 0.0
         self._learning = False
         self.setMinimumSize(72, 88)
         self.setCursor(Qt.SizeVerCursor)
@@ -35,8 +36,17 @@ class Knob(QWidget):
         return self._value
 
     def fraction(self):
-        span = self._max - self._min
-        return 0.0 if span == 0 else (self._value - self._min) / span
+        if self._max == self._min:
+            return 0.0
+        if self._log:
+            return math.log(self._value / self._min) / math.log(self._max / self._min)
+        return (self._value - self._min) / (self._max - self._min)
+
+    def _from_fraction(self, f):
+        f = min(max(f, 0.0), 1.0)
+        if self._log:
+            return self._min * (self._max / self._min) ** f
+        return self._min + f * (self._max - self._min)
 
     def setValue(self, v):
         self._value = self._clamp(v)
@@ -55,7 +65,7 @@ class Knob(QWidget):
 
     def nudge(self, fraction_delta):
         """Move by a fraction of the full range (user-driven)."""
-        self._emit(self._value + fraction_delta * (self._max - self._min))
+        self._emit(self._from_fraction(self.fraction() + fraction_delta))
 
     def reset(self):
         self._value = self._clamp(self._default)
@@ -65,12 +75,12 @@ class Knob(QWidget):
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
             self._drag_y = event.position().y()
-            self._drag_start = self._value
+            self._drag_frac = self.fraction()
 
     def mouseMoveEvent(self, event):
         if self._drag_y is not None:
             delta = (self._drag_y - event.position().y()) / _DRAG_PIXELS
-            self._emit(self._drag_start + delta * (self._max - self._min))
+            self._emit(self._from_fraction(self._drag_frac + delta))
 
     def mouseReleaseEvent(self, event):
         self._drag_y = None
