@@ -16,7 +16,8 @@ GROUP_POSITIONS = {
     "Effects": (1, 0, 1, 1),
     "Filter": (1, 1, 1, 1),
     "Master": (1, 2, 1, 1),
-    "Envelope": (2, 0, 1, 2),
+    "Amp Envelope": (2, 0, 1, 1),
+    "Filter Env": (2, 1, 1, 1),
 }
 
 

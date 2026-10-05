@@ -161,9 +161,9 @@ def build_registry(engine):
             tooltip="Bit depth and sample-rate reduction."),
     }
 
-    def envelope(pid, label, maximum, tooltip, time=True):
+    def envelope(pid, label, maximum, tooltip, time=True, group="Amp Envelope"):
         return Param(
-            id=pid, label=label, group="Envelope", kind=CONTINUOUS,
+            id=pid, label=label, group=group, kind=CONTINUOUS,
             minimum=AMP_TIME_MIN if time else 0.0, maximum=maximum,
             scale="log" if time else "linear",
             formatter=format_seconds if time else None, widget="slider",
@@ -216,9 +216,24 @@ def build_registry(engine):
               set=lambda v: engine.set_lpf_mode("master" if v else "voice"),
               tooltip="Off: one filter per voice. On: a single filter on the whole mix "
                       "(lighter on the CPU; use it if audio glitches)."),
+        Param(id="flt_env_amount", label="Env Amt", group="Filter", kind=CONTINUOUS,
+              minimum=-1.0, maximum=1.0, fmt="{:+.2f}",
+              get=lambda: p["flt_env_amount"], set=engine.set_flt_env_amount,
+              tooltip="How far the filter envelope moves the cutoff "
+                      "(up to 6 octaves). Negative closes the filter."),
+        Param(id="flt_keytrack", label="Key Trk", group="Filter", kind=CONTINUOUS,
+              get=lambda: p["flt_keytrack"], set=engine.set_flt_keytrack,
+              tooltip="Cutoff follows the note pitch. 1.00 = one octave "
+                      "of cutoff per octave of pitch."),
+        Param(id="flt_vel", label="Vel>Cut", group="Filter", kind=CONTINUOUS,
+              get=lambda: p["flt_vel"], set=engine.set_flt_vel,
+              tooltip="Harder key presses open the filter further."),
         Param(id="master_gain", label="Volume", group="Master", kind=CONTINUOUS,
               maximum=MASTER_GAIN_MAX, get=lambda: p["master_gain"],
               set=engine.set_master_gain),
+        Param(id="velocity_on", label="Velocity", group="Master", kind=TOGGLE,
+              get=lambda: p["velocity_on"], set=engine.set_velocity_on,
+              tooltip="When off, every note plays at one fixed velocity."),
     ]
     params += [
         envelope("amp_attack", "Attack", AMP_ATTACK_MAX,
@@ -229,6 +244,20 @@ def build_registry(engine):
                  "Volume held while the key is down.", time=False),
         envelope("amp_release", "Release", AMP_RELEASE_MAX,
                  "Time for a note to fade out after the key is released."),
+    ]
+    params += [
+        envelope("flt_attack", "Attack", AMP_ATTACK_MAX,
+                 "Time for the filter to open after a note starts.",
+                 group="Filter Env"),
+        envelope("flt_decay", "Decay", AMP_DECAY_MAX,
+                 "Time for the filter to fall to the sustain level.",
+                 group="Filter Env"),
+        envelope("flt_sustain", "Sustain", 1.0,
+                 "Filter envelope level held while the key is down.",
+                 time=False, group="Filter Env"),
+        envelope("flt_release", "Release", AMP_RELEASE_MAX,
+                 "Time for the filter envelope to fall after key release.",
+                 group="Filter Env"),
     ]
     pingpong = Param(
         id="fx_delay_pingpong", label="Ping-pong", group="Effects", kind=TOGGLE,

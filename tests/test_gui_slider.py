@@ -154,9 +154,10 @@ def test_window_envelope_group(qapp, tmp_path):
     store = ProfileStore(tmp_path / "cfg")
     router = MidiRouter(reg, store.open_active())
     window = MainWindow(engine, reg, router, store, [], Bridge(reg, router))
-    assert GROUP_POSITIONS["Envelope"] == (2, 0, 1, 2)
+    assert GROUP_POSITIONS["Amp Envelope"] == (2, 0, 1, 1)
+    assert GROUP_POSITIONS["Filter Env"] == (2, 1, 1, 1)
     assert set(window.controls) == set(reg.ids())
-    box = next(b for b in window.findChildren(QGroupBox) if b.title() == "Envelope")
+    box = next(b for b in window.findChildren(QGroupBox) if b.title() == "Amp Envelope")
     layout = box.layout()
     widgets = [layout.itemAtPosition(0, c).widget() for c in range(4)]
     assert [w.param.id for w in widgets] == IDS

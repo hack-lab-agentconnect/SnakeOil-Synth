@@ -20,6 +20,8 @@ from .config import (
     DEFAULT_LPF_MODE,
     DEFAULT_LPF_CUTOFF,
     DEFAULT_ADSR,
+    DEFAULT_FLT_ENV,
+    FIXED_VELOCITY,
     AMP_TIME_MIN,
     AMP_ATTACK_MAX,
     AMP_DECAY_MAX,
@@ -63,6 +65,14 @@ class SynthEngine:
             "amp_decay": DEFAULT_ADSR["decay"],
             "amp_sustain": DEFAULT_ADSR["sustain"],
             "amp_release": DEFAULT_ADSR["release"],
+            "velocity_on": True,
+            "flt_env_amount": 0.0,
+            "flt_keytrack": 0.0,
+            "flt_vel": 0.0,
+            "flt_attack": DEFAULT_FLT_ENV["attack"],
+            "flt_decay": DEFAULT_FLT_ENV["decay"],
+            "flt_sustain": DEFAULT_FLT_ENV["sustain"],
+            "flt_release": DEFAULT_FLT_ENV["release"],
         }
         self._order = 0
         self.sustain = False
@@ -167,11 +177,42 @@ class SynthEngine:
         for v in self.voices:
             v.env.set_shape(p["amp_attack"], p["amp_decay"],
                             p["amp_sustain"], p["amp_release"])
+            v.flt_env.set_shape(p["flt_attack"], p["flt_decay"],
+                                p["flt_sustain"], p["flt_release"])
 
     def _set_envelope(self, key, value, lo, hi):
         with self.lock:
             self.params[key] = min(max(float(value), lo), hi)
             self._apply_envelope()
+
+    def set_velocity_on(self, on):
+        with self.lock:
+            self.params["velocity_on"] = bool(on)
+
+    def _set_unit(self, key, value, lo, hi):
+        with self.lock:
+            self.params[key] = min(max(float(value), lo), hi)
+
+    def set_flt_env_amount(self, amount):
+        self._set_unit("flt_env_amount", amount, -1.0, 1.0)
+
+    def set_flt_keytrack(self, amount):
+        self._set_unit("flt_keytrack", amount, 0.0, 1.0)
+
+    def set_flt_vel(self, amount):
+        self._set_unit("flt_vel", amount, 0.0, 1.0)
+
+    def set_flt_attack(self, seconds):
+        self._set_envelope("flt_attack", seconds, AMP_TIME_MIN, AMP_ATTACK_MAX)
+
+    def set_flt_decay(self, seconds):
+        self._set_envelope("flt_decay", seconds, AMP_TIME_MIN, AMP_DECAY_MAX)
+
+    def set_flt_sustain(self, level):
+        self._set_envelope("flt_sustain", level, 0.0, 1.0)
+
+    def set_flt_release(self, seconds):
+        self._set_envelope("flt_release", seconds, AMP_TIME_MIN, AMP_RELEASE_MAX)
 
     def set_amp_attack(self, seconds):
         self._set_envelope("amp_attack", seconds, AMP_TIME_MIN, AMP_ATTACK_MAX)
@@ -209,7 +250,8 @@ class SynthEngine:
                     v.env.note_off()
             self._order += 1
             voice = self._allocate_voice()
-            voice.note_on(note, velocity / 127.0, self._order)
+            vel = velocity / 127.0 if self.params["velocity_on"] else FIXED_VELOCITY
+            voice.note_on(note, vel, self._order)
 
     def note_off(self, note):
         with self.lock:
@@ -330,6 +372,14 @@ class SynthEngine:
                 "amp_decay": self.params["amp_decay"],
                 "amp_sustain": self.params["amp_sustain"],
                 "amp_release": self.params["amp_release"],
+                "velocity_on": self.params["velocity_on"],
+                "flt_env_amount": self.params["flt_env_amount"],
+                "flt_keytrack": self.params["flt_keytrack"],
+                "flt_vel": self.params["flt_vel"],
+                "flt_attack": self.params["flt_attack"],
+                "flt_decay": self.params["flt_decay"],
+                "flt_sustain": self.params["flt_sustain"],
+                "flt_release": self.params["flt_release"],
                 "chorus_depth": self.effects.chorus.amount,
                 "delay_time": self.effects.delay.time_ms,
                 "delay_pingpong": self.effects.delay.pingpong,

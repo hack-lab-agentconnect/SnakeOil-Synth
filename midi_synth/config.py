@@ -34,3 +34,14 @@ AMP_TIME_MIN = 0.001
 AMP_ATTACK_MAX = 5.0
 AMP_DECAY_MAX = 5.0
 AMP_RELEASE_MAX = 10.0
+
+FIXED_VELOCITY = 100 / 127
+FLT_ENV_OCTAVES = 6.0
+FLT_VEL_OCTAVES = 6.0
+
+DEFAULT_FLT_ENV = {
+    "attack": 0.005,
+    "decay": 0.3,
+    "sustain": 0.3,
+    "release": 0.3,
+}

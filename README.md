@@ -93,7 +93,7 @@ A patch is a saved sound: every knob, slider and switch except master volume.
 
 ## Amp envelope (ADSR)
 
-The *Envelope* group at the bottom of the window has four vertical sliders that shape
+The *Amp Envelope* group at the bottom of the window has four vertical sliders that shape
 the volume of every note:
 
 | Slider | Range | Scale | Default |
@@ -107,6 +107,24 @@ Changes apply to notes that are already sounding as well as to new notes. Double
 a slider to restore its default. The console command `adsr <attack_s> <decay_s> <sustain>
 <release_s>` sets all four at once (out-of-range values are clamped). The sliders have no
 default MIDI CC; assign them with MIDI learn.
+
+## Velocity, filter envelope and key tracking
+
+- **Velocity** (Master group): when switched off, every note plays at one fixed velocity
+  (100), whatever the keyboard sends. Console: `velocity on|off`.
+- **Filter envelope:** the *Filter Env* group (next to *Amp Envelope*) has Attack, Decay,
+  Sustain and Release sliders with the same ranges as the amp envelope (defaults 5 ms,
+  300 ms, 0.30, 300 ms). *Env Amt* in the *Filter* group (-1 to +1, default 0 = off) sets
+  how far the envelope moves the cutoff, up to 6 octaves at full amount; negative values
+  close the filter instead. Console: `fltenv <-1..1>`.
+- **Key Trk** (0-1): the cutoff follows the note. At 1.00 the cutoff doubles for each
+  octave above middle C (note 60) and halves for each octave below.
+- **Vel>Cut** (0-1): harder key presses raise the cutoff, up to 3 octaves up or down at
+  full amount (velocity 127 vs 0).
+
+All of these default to off, so the default sound is unchanged. They apply to the
+per-voice filter only; with *Master-bus filter* on they are ignored. A cutoff pushed to
+20 kHz or more bypasses the filter for that note.
 
 ## Low latency on Windows (ASIO / WASAPI)
 
@@ -162,6 +180,8 @@ lpf <20-20000>      # low-pass cutoff in Hz (default 2000; 20000 = off)
 lres <0-1>          # low-pass resonance
 lpfmode <voice|master>  # filter placement
 adsr <a> <d> <s> <r>  # amp envelope: attack and decay in seconds (0.001-5), sustain 0-1, release in seconds (0.001-10)
+velocity <on|off>   # off = fixed note velocity (default on)
+fltenv <-1..1>      # filter envelope amount (per-voice filter; default 0)
 gain <0-1.2>
 alloff | status | quit
 ```

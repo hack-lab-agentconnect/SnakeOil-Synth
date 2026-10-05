@@ -1,6 +1,7 @@
 import numpy as np
 
-from .filters import LowPass
+from .config import FLT_ENV_OCTAVES, FLT_VEL_OCTAVES
+from .filters import LPF_MAX_HZ, LPF_MIN_HZ, LowPass, lpf_coefficients
 
 ATTACK, DECAY, SUSTAIN, RELEASE, IDLE = range(5)
 
@@ -98,12 +99,14 @@ class Voice:
         self.osc1 = Oscillator(sr, "saw")
         self.osc2 = Oscillator(sr, "square")
         self.env = Envelope(sr)
+        self.flt_env = Envelope(sr)
         self.lpf = LowPass(sr)
         self.note = -1
         self.gate = False
         self.freq = 0.0
         self.velocity = 0.0
         self.trigger_order = 0
+        self._lpf_bypassed = False
 
     @property
     def active(self):
@@ -118,11 +121,37 @@ class Voice:
         self.osc1.reset()
         self.osc2.reset()
         self.env.note_on()
+        self.flt_env.note_on()
         self.lpf.reset()
 
     def note_off(self):
         self.gate = False
         self.env.note_off()
+        self.flt_env.note_off()
+
+    def _voice_coeffs(self, n, params):
+        """Low-pass coefficients for this block, or None for no filtering.
+
+        Uses the shared coefficients unless a per-voice modulation is active.
+        """
+        shared = params["lpf_coeffs"]
+        amount = params.get("flt_env_amount", 0.0)
+        keytrack = params.get("flt_keytrack", 0.0)
+        vel_amt = params.get("flt_vel", 0.0)
+        if not (amount or keytrack or vel_amt):
+            return shared
+        octaves = 0.0
+        if amount:
+            octaves += amount * FLT_ENV_OCTAVES * float(np.mean(self.flt_env.process(n)))
+        if keytrack:
+            octaves += keytrack * (self.note - 60) / 12.0
+        if vel_amt:
+            octaves += vel_amt * FLT_VEL_OCTAVES * (self.velocity - 0.5)
+        cutoff = params["lpf_cutoff"] * 2.0 ** octaves
+        cutoff = min(max(cutoff, LPF_MIN_HZ), 0.45 * self.sr)
+        if cutoff >= LPF_MAX_HZ / 1.01:
+            return None
+        return lpf_coefficients(cutoff, params["lpf_resonance"], self.sr)
 
     def render(self, n, params):
         self.osc1.layer_square = params["osc1_square"]
@@ -166,9 +195,13 @@ class Voice:
         mix = params["osc1_level"] * mod
         if audible2:
             mix = mix + level2 * sec
-        coeffs = params["lpf_coeffs"]
-        if coeffs is not None and params["lpf_mode"] == "voice":
-            mix = self.lpf.process(mix, coeffs)
+        if params["lpf_mode"] == "voice":
+            coeffs = self._voice_coeffs(n, params)
+            if coeffs is not None:
+                if self._lpf_bypassed:
+                    self.lpf.reset()
+                mix = self.lpf.process(mix, coeffs)
+            self._lpf_bypassed = coeffs is None
         env = self.env.process(n)
         amp = 0.22 * (0.3 + 0.7 * self.velocity)
         return mix * env * amp

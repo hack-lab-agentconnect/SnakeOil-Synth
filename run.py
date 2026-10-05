@@ -139,6 +139,8 @@ HELP_TEXT = """commands:
   lres <0-1>                 low-pass resonance
   lpfmode <voice|master>     filter placement
   adsr <a> <d> <s> <r>       amp envelope: attack, decay (s), sustain (0-1), release (s)
+  velocity <on|off>          off = every note plays at one fixed velocity
+  fltenv <-1..1>             filter envelope amount (per-voice filter)
   gain <0-1.2>               master volume
   patch list                 list saved sound patches
   patch save <name>          save the current sound as a patch
@@ -286,6 +288,14 @@ def console_loop(engine, registry=None, patch_store=None, patch_defaults=None):
                 engine.set_amp_decay(decay)
                 engine.set_amp_sustain(sustain)
                 engine.set_amp_release(release)
+            elif cmd == "velocity":
+                on = parse_on_off(parts[1]) if len(parts) > 1 else None
+                if on is None:
+                    print("usage: velocity <on|off>")
+                else:
+                    engine.set_velocity_on(on)
+            elif cmd == "fltenv":
+                engine.set_flt_env_amount(float(parts[1]))
             elif cmd == "fx":
                 name = parts[1].lower()
                 action = parse_on_off(parts[2], allow_toggle=True) if len(parts) > 2 else "toggle"
