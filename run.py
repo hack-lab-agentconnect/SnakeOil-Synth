@@ -74,6 +74,10 @@ def list_devices():
 
 HELP_TEXT = """commands:
   fx <chorus|delay|reverb|bitcrush> <on|off|toggle>
+  chorusrate <1-10>          chorus LFO rate in Hz
+  delaytime <200-4000>       delay time in ms
+  reverbamt <0-1>            reverb wet amount
+  crush <0-1>                bitcrush amount (bit depth and downsampling)
   square <on|off>            osc 1 square layer over the saw
   pwm1/pwm2 <0-0.5>          pulse width (osc 1 square layer / osc 2); 0.5 = square
   level1/level2 <0-1>        oscillator mix level (osc2 starts at 0)
@@ -129,6 +133,14 @@ def console_loop(engine):
                 engine.set_detune2(engine.params["detune2_semitones"], float(parts[1]))
             elif cmd == "gain":
                 engine.set_master_gain(float(parts[1]))
+            elif cmd == "chorusrate":
+                engine.set_chorus_rate(float(parts[1]))
+            elif cmd == "delaytime":
+                engine.set_delay_time(min(max(float(parts[1]), 200.0), 4000.0))
+            elif cmd == "reverbamt":
+                engine.set_reverb_amount(float(parts[1]))
+            elif cmd == "crush":
+                engine.set_crush_amount(float(parts[1]))
             elif cmd == "square":
                 engine.set_osc1_square(parts[1].lower() == "on")
             elif cmd == "pwm1":

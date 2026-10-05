@@ -4,7 +4,7 @@ TWO_PI = 2.0 * np.pi
 
 
 class Chorus:
-    def __init__(self, sr, enabled=False, mix=0.5, rate=0.5, depth_ms=6.0,
+    def __init__(self, sr, enabled=False, mix=0.5, rate=1.0, depth_ms=6.0,
                  base_ms=14.0, feedback=0.15):
         self.sr = sr
         self.enabled = enabled
@@ -12,11 +12,16 @@ class Chorus:
         self.feedback = feedback
         self.base = base_ms * sr / 1000.0
         self.depth = depth_ms * sr / 1000.0
+        self.rate = rate
         self.inc = TWO_PI * rate / sr
         maxlen = int((base_ms + depth_ms + 5.0) * sr / 1000.0) + 4
         self.buf = np.zeros(maxlen, dtype=np.float64)
         self.idx = 0
         self.phase = 0.0
+
+    def set_rate(self, hz):
+        self.rate = min(max(float(hz), 1.0), 10.0)
+        self.inc = TWO_PI * self.rate / self.sr
 
     def process(self, x):
         if not self.enabled:
@@ -65,6 +70,7 @@ class Delay:
         self.mix = mix
         self.feedback = feedback
         self.damp = damp
+        self.time_ms = time_ms
         self.time = time_ms * sr / 1000.0
         maxlen = int(sr * 4.0) + 4
         self.buf = np.zeros(maxlen, dtype=np.float64)
@@ -72,7 +78,8 @@ class Delay:
         self.filter = 0.0
 
     def set_time_ms(self, time_ms):
-        self.time = min(max(time_ms, 1.0), 4000.0) * self.sr / 1000.0
+        self.time_ms = min(max(float(time_ms), 1.0), 4000.0)
+        self.time = self.time_ms * self.sr / 1000.0
 
     def process(self, x):
         if not self.enabled:
@@ -158,6 +165,9 @@ class Reverb:
         self.allpasses = [_Allpass(d * k, 0.5) for d in ap_delays]
         self._inv = 1.0 / len(self.combs)
 
+    def set_amount(self, v):
+        self.mix = min(max(float(v), 0.0), 1.0)
+
     def process(self, x):
         if not self.enabled:
             return x
@@ -188,6 +198,12 @@ class Bitcrusher:
         self.downsample = max(int(downsample), 1)
         self.hold = 0.0
         self.counter = 0
+        self.amount = 0.5
+
+    def set_amount(self, a):
+        self.amount = min(max(float(a), 0.0), 1.0)
+        self.bits = max(2, int(round(16 - 16 * self.amount)))
+        self.downsample = max(1, int(round(1 + 6 * self.amount)))
 
     def process(self, x):
         if not self.enabled:
@@ -216,6 +232,7 @@ class EffectChain:
         self.delay = Delay(sr)
         self.reverb = Reverb(sr)
         self.bitcrush = Bitcrusher(sr)
+        self.bitcrush.set_amount(0.5)
         self.order = ["chorus", "delay", "reverb", "bitcrush"]
 
     def get(self, name):

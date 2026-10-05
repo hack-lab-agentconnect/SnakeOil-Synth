@@ -1,6 +1,6 @@
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
-    QComboBox, QGridLayout, QGroupBox, QHBoxLayout, QInputDialog, QLabel,
+    QComboBox, QGridLayout, QGroupBox, QInputDialog, QLabel,
     QMainWindow, QMessageBox, QPushButton, QToolBar, QWidget,
 )
 
@@ -72,16 +72,22 @@ class MainWindow(QMainWindow):
 
     def _build_body(self):
         groups = {}
+        columns = {}
         for param in self.registry:
             box = groups.get(param.group)
             if box is None:
                 box = QGroupBox(param.group)
-                box.setLayout(QHBoxLayout())
+                box.setLayout(QGridLayout())
                 groups[param.group] = box
             control = ParamControl(self.registry, param)
             control.learnRequested.connect(self._on_learn_requested)
             control.clearRequested.connect(self._on_clear_requested)
-            box.layout().addWidget(control)
+            cols = columns.setdefault(param.group, {})
+            if param.under:
+                box.layout().addWidget(control, 1, cols[param.under])
+            else:
+                cols[param.id] = len(cols)
+                box.layout().addWidget(control, 0, cols[param.id])
             self.controls[param.id] = control
         grid = QGridLayout()
         for index, (name, box) in enumerate(groups.items()):

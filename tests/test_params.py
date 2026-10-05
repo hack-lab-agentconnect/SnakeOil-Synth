@@ -125,3 +125,61 @@ def test_pwm_and_square_params_reach_engine(rig):
     assert engine.params["osc2_pwm"] == 0.5
     assert reg.from_midi("osc1_pwm", 127) == 0.5
     assert reg.from_midi("osc2_pwm", 0) == 0.0
+
+
+DIALS = {
+    "fx_chorus_rate": ("fx_chorus", "Rate", 1.0, 10.0, 1.0),
+    "fx_delay_time": ("fx_delay", "Time", 200.0, 4000.0, 300.0),
+    "fx_reverb_amount": ("fx_reverb", "Amount", 0.0, 1.0, 0.3),
+    "fx_bitcrush_amount": ("fx_bitcrush", "Crush", 0.0, 1.0, 0.5),
+}
+
+
+def test_effect_dials_ranges_and_defaults(rig):
+    _, reg = rig
+    for pid, (under, label, lo, hi, default) in DIALS.items():
+        p = reg[pid]
+        assert p.kind == "continuous" and p.group == "Effects"
+        assert p.label == label and p.under == under
+        assert (p.minimum, p.maximum) == (lo, hi)
+        assert reg.get(pid) == pytest.approx(default)
+        assert p.tooltip
+        assert reg[under].kind == "toggle" and reg[under].under == ""
+    assert reg["fx_delay_time"].scale == "log"
+    ids = reg.ids()
+    for pid, (under, *_rest) in DIALS.items():
+        assert ids.index(pid) == ids.index(under) + 1
+
+
+def test_delay_time_is_log_mapped_from_midi(rig):
+    _, reg = rig
+    assert reg.from_midi("fx_delay_time", 0) == pytest.approx(200.0)
+    assert reg.from_midi("fx_delay_time", 127) == pytest.approx(4000.0)
+
+
+def test_effect_dials_reach_effects(rig):
+    engine, reg = rig
+    reg.set("fx_chorus_rate", 5.0)
+    assert engine.effects.chorus.rate == 5.0
+    reg.set("fx_delay_time", 1000.0)
+    assert engine.effects.delay.time_ms == 1000.0
+    reg.set("fx_delay_time", 5.0)
+    assert engine.effects.delay.time_ms == 200.0
+    reg.set("fx_reverb_amount", 0.8)
+    assert engine.effects.reverb.mix == 0.8
+    reg.set("fx_bitcrush_amount", 1.0)
+    assert engine.effects.bitcrush.amount == 1.0
+    assert reg.get("fx_bitcrush_amount") == 1.0
+
+
+def test_engine_status_includes_dials(rig):
+    engine, reg = rig
+    reg.set("fx_chorus_rate", 4.0)
+    reg.set("fx_delay_time", 800.0)
+    reg.set("fx_reverb_amount", 0.6)
+    reg.set("fx_bitcrush_amount", 0.25)
+    s = engine.status()
+    assert s["chorus_rate"] == 4.0
+    assert s["delay_time"] == 800.0
+    assert s["reverb_amount"] == 0.6
+    assert s["crush_amount"] == 0.25

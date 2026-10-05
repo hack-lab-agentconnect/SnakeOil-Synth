@@ -193,6 +193,22 @@ class SynthEngine:
         with self.lock:
             self.effects.get(name).enabled = bool(enabled)
 
+    def set_chorus_rate(self, hz):
+        with self.lock:
+            self.effects.chorus.set_rate(hz)
+
+    def set_delay_time(self, ms):
+        with self.lock:
+            self.effects.delay.set_time_ms(ms)
+
+    def set_reverb_amount(self, v):
+        with self.lock:
+            self.effects.reverb.set_amount(v)
+
+    def set_crush_amount(self, a):
+        with self.lock:
+            self.effects.bitcrush.set_amount(a)
+
     def toggle_effect(self, name):
         with self.lock:
             fx = self.effects.get(name)
@@ -238,6 +254,10 @@ class SynthEngine:
                 "lpf_cutoff": self.params["lpf_cutoff"],
                 "lpf_resonance": self.params["lpf_resonance"],
                 "lpf_mode": self.params["lpf_mode"],
+                "chorus_rate": self.effects.chorus.rate,
+                "delay_time": self.effects.delay.time_ms,
+                "reverb_amount": self.effects.reverb.mix,
+                "crush_amount": self.effects.bitcrush.amount,
                 "effects": fx,
                 "active_voices": sum(1 for v in self.voices if v.active),
             }

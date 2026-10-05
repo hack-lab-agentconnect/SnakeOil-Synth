@@ -128,3 +128,23 @@ def test_oscillator_groups_hold_their_controls(rig):
     assert ids("Oscillator 1") == [
         "osc1_level", "osc1_square", "osc1_pwm", "osc1_octave",
     ]
+
+
+def test_effect_dials_sit_under_their_toggles(rig):
+    from PySide6.QtWidgets import QGroupBox
+
+    _, registry, _, _, window = rig
+    box = next(b for b in window.findChildren(QGroupBox) if b.title() == "Effects")
+    layout = box.layout()
+
+    def pos(pid):
+        idx = layout.indexOf(window.controls[pid])
+        assert idx >= 0
+        row, col, *_ = layout.getItemPosition(idx)
+        return row, col
+
+    for name in ("chorus", "delay", "reverb", "bitcrush"):
+        dial = next(p for p in registry if p.under == "fx_" + name)
+        trow, tcol = pos("fx_" + name)
+        drow, dcol = pos(dial.id)
+        assert dcol == tcol and drow > trow

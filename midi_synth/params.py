@@ -33,6 +33,7 @@ class Param:
     affects: Tuple[str, ...] = ()
     scale: str = "linear"
     tooltip: str = ""
+    under: str = ""
 
 
 class ParamRegistry:
@@ -122,6 +123,29 @@ def build_registry(engine):
             set=lambda v: engine.set_effect(name, v),
         )
 
+    fx = engine.effects
+    dials = {
+        "chorus": Param(
+            id="fx_chorus_rate", label="Rate", group="Effects", kind=CONTINUOUS,
+            minimum=1.0, maximum=10.0, fmt="{:.1f} Hz", under="fx_chorus",
+            get=lambda: fx.chorus.rate, set=engine.set_chorus_rate,
+            tooltip="Chorus LFO speed."),
+        "delay": Param(
+            id="fx_delay_time", label="Time", group="Effects", kind=CONTINUOUS,
+            minimum=200.0, maximum=4000.0, scale="log", fmt="{:.0f} ms",
+            under="fx_delay", get=lambda: fx.delay.time_ms,
+            set=engine.set_delay_time, tooltip="Delay time between echoes."),
+        "reverb": Param(
+            id="fx_reverb_amount", label="Amount", group="Effects",
+            kind=CONTINUOUS, under="fx_reverb", get=lambda: fx.reverb.mix,
+            set=engine.set_reverb_amount, tooltip="Reverb wet level."),
+        "bitcrush": Param(
+            id="fx_bitcrush_amount", label="Crush", group="Effects",
+            kind=CONTINUOUS, under="fx_bitcrush",
+            get=lambda: fx.bitcrush.amount, set=engine.set_crush_amount,
+            tooltip="Bit depth and sample-rate reduction."),
+    }
+
     params = [
         Param(id="osc1_level", label="Level", group="Oscillator 1", kind=CONTINUOUS,
               get=lambda: p["osc1_level"], set=lambda v: engine.set_osc_level(1, v)),
@@ -171,5 +195,8 @@ def build_registry(engine):
         Param(id="master_gain", label="Volume", group="Master", kind=CONTINUOUS,
               maximum=MASTER_GAIN_MAX, get=lambda: p["master_gain"],
               set=engine.set_master_gain),
-    ] + [effect(n) for n in EFFECT_NAMES]
+    ]
+    for n in EFFECT_NAMES:
+        params.append(effect(n))
+        params.append(dials[n])
     return ParamRegistry(params)
