@@ -210,6 +210,21 @@ The square layer and PWM controls have no default CC; assign them with MIDI lear
 Toggle CCs act on press (value ≥ 64) with edge detection. Profiles saved before the
 low-pass filter was added do not have CC 71 and CC 74; use the toolbar's Reset to get them.
 
+## Pedal, panic and aftertouch
+
+These work without any binding. A CC you bind yourself (MIDI Learn or a profile) always
+wins over the built-in behaviour of the same CC.
+
+| Message | Action |
+|---|---|
+| CC 64 (sustain pedal) | value >= 64 holds notes; note-offs are deferred until the pedal lifts. Pressing a held key again retriggers it normally. |
+| CC 123 (all notes off) | releases every note, including pedal-held ones |
+| CC 120 (all sound off) | silences everything immediately (no release tail) and lifts the pedal |
+| CC 121 (reset controllers) | pitch bend back to centre and pedal up |
+| Channel aftertouch | bindable like a CC (shown as `Aftertouch` or `Aftertouch ch2`); MIDI Learn works for any control, toggles act at value >= 64 |
+
+Polyphonic (per-note) aftertouch is ignored. Console: `sustain on|off` and `panic`.
+
 ## Signal flow
 
 ```

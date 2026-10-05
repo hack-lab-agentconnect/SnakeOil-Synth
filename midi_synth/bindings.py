@@ -3,6 +3,7 @@ from typing import Optional
 
 CC = "cc"
 NOTE = "note"
+PRESSURE = "pressure"  # channel aftertouch
 DEFAULT_NAME = "Default"
 PROFILE_VERSION = 1
 
@@ -20,11 +21,13 @@ class Source:
     @classmethod
     def from_key(cls, key):
         kind, chan, num = key.split(":")
-        if kind not in (CC, NOTE):
+        if kind not in (CC, NOTE, PRESSURE):
             raise ValueError("bad source kind: %r" % kind)
         number = int(num)
         if not 0 <= number <= 127:
             raise ValueError("bad source number: %d" % number)
+        if kind == PRESSURE and number != 0:
+            raise ValueError("bad source number for pressure: %d" % number)
         channel = None
         if chan != "*":
             channel = int(chan)
@@ -33,7 +36,10 @@ class Source:
         return cls(kind, number, channel)
 
     def label(self):
-        base = ("CC %d" if self.kind == CC else "Note %d") % self.number
+        if self.kind == PRESSURE:
+            base = "Aftertouch"
+        else:
+            base = ("CC %d" if self.kind == CC else "Note %d") % self.number
         return base if self.channel is None else "%s ch%d" % (base, self.channel)
 
     def overlaps(self, other):

@@ -47,6 +47,16 @@ class MidiInput:
         channel = getattr(msg, "channel", None)
         return channel is not None and channel + 1 == self.channel
 
+    def _standard_cc(self, control, value):
+        if control == 64:
+            self.engine.set_sustain(value >= 64)
+        elif control == 120:
+            self.engine.panic()
+        elif control == 121:
+            self.engine.reset_controllers()
+        elif control == 123:
+            self.engine.all_notes_off()
+
     def _on_message(self, msg):
         if not self._accepts(msg):
             return
@@ -58,7 +68,10 @@ class MidiInput:
                 self.router.handle_note(msg.channel, msg.note, 0, False)
                 self.engine.note_off(msg.note)
             elif msg.type == "control_change":
-                self.router.handle_cc(msg.channel, msg.control, msg.value)
+                if not self.router.handle_cc(msg.channel, msg.control, msg.value):
+                    self._standard_cc(msg.control, msg.value)
+            elif msg.type == "aftertouch":
+                self.router.handle_pressure(msg.channel, msg.value)
             elif msg.type == "pitchwheel":
                 self.engine.set_pitch_bend(msg.pitch / 8192.0)
         except Exception:

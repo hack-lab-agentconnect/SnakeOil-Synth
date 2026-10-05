@@ -144,6 +144,8 @@ HELP_TEXT = """commands:
   patch save <name>          save the current sound as a patch
   patch load <name>          load a patch
   patch delete <name>        delete a patch (Init cannot be deleted)
+  sustain <on|off>           hold the sustain pedal down / up
+  panic                      silence everything immediately
   alloff                     release all held notes
   status                     show current settings
   help                       show this help
@@ -223,6 +225,14 @@ def console_loop(engine, registry=None, patch_store=None, patch_defaults=None):
                     print("  %s: %s" % (k, v))
             elif cmd == "patch":
                 patch_command(parts, registry, patch_store, patch_defaults)
+            elif cmd == "sustain":
+                on = parse_on_off(parts[1]) if len(parts) > 1 else None
+                if on is None:
+                    print("usage: sustain <on|off>")
+                else:
+                    engine.set_sustain(on)
+            elif cmd == "panic":
+                engine.panic()
             elif cmd == "alloff":
                 engine.all_notes_off()
             elif cmd in ("fm", "mod"):

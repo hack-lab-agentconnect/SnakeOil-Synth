@@ -26,7 +26,7 @@ from .config import (
     AMP_RELEASE_MAX,
 )
 from .filters import LowPass, LPF_MIN_HZ, LPF_MAX_HZ, lpf_coefficients
-from .voice import Voice
+from .voice import IDLE, Voice
 from .effects import EffectChain
 
 
@@ -65,6 +65,8 @@ class SynthEngine:
             "amp_release": DEFAULT_ADSR["release"],
         }
         self._order = 0
+        self.sustain = False
+        self._sustained = set()
         self._update_lpf()
         self._apply_envelope()
 
@@ -200,6 +202,7 @@ class SynthEngine:
 
     def note_on(self, note, velocity=100):
         with self.lock:
+            self._sustained.discard(note)
             for v in self.voices:
                 if v.active and v.note == note and v.gate:
                     v.gate = False
@@ -210,15 +213,44 @@ class SynthEngine:
 
     def note_off(self, note):
         with self.lock:
+            if self.sustain:
+                self._sustained.add(note)
+                return
             for v in self.voices:
                 if v.note == note and v.gate:
                     v.note_off()
 
     def all_notes_off(self):
         with self.lock:
+            self._sustained.clear()
             for v in self.voices:
                 if v.active:
                     v.note_off()
+
+    def set_sustain(self, on):
+        with self.lock:
+            on = bool(on)
+            self.sustain = on
+            if not on:
+                deferred, self._sustained = self._sustained, set()
+                for v in self.voices:
+                    if v.gate and v.note in deferred:
+                        v.note_off()
+
+    def panic(self):
+        """Silence every voice immediately and clear the sustain state."""
+        with self.lock:
+            for v in self.voices:
+                v.gate = False
+                v.env.stage = IDLE
+                v.env.level = 0.0
+            self._sustained.clear()
+            self.sustain = False
+
+    def reset_controllers(self):
+        with self.lock:
+            self.set_pitch_bend(0.0)
+            self.set_sustain(False)
 
     def active_note_count(self):
         with self.lock:
@@ -304,5 +336,6 @@ class SynthEngine:
                 "reverb_amount": self.effects.reverb.mix,
                 "crush_amount": self.effects.bitcrush.amount,
                 "effects": fx,
+                "sustain": self.sustain,
                 "active_voices": sum(1 for v in self.voices if v.active),
             }
