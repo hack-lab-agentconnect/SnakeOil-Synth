@@ -1,9 +1,49 @@
 import numpy as np
+from scipy.signal import lfilter
 
 TWO_PI = 2.0 * np.pi
 
 
 CHORUS_MAX_DEPTH_MS = 8.0
+
+
+def _chunks(n, limit):
+    """Yield (start, stop) slices of [0, n) no longer than `limit` samples."""
+    limit = max(int(limit), 1)
+    for start in range(0, n, limit):
+        yield start, min(start + limit, n)
+
+
+def _ring_read(buf, idx, n):
+    """Return buf[idx : idx + n] with wrap-around (a copy)."""
+    if idx + n <= len(buf):
+        return buf[idx:idx + n].copy()
+    return buf.take(np.arange(idx, idx + n), mode="wrap")
+
+
+def _ring_write(buf, idx, vals):
+    """Write vals into buf starting at idx with wrap-around."""
+    n = len(vals)
+    if idx + n <= len(buf):
+        buf[idx:idx + n] = vals
+    else:
+        np.put(buf, np.arange(idx, idx + n), vals, mode="wrap")
+
+
+def _interp_read(buf, idx, n, delay):
+    """Fractional-delay read for n samples starting at write position idx.
+
+    `delay` is a scalar or an array of n delays in samples. All n samples are
+    read before anything is written, so n must not exceed the shortest delay.
+    """
+    size = len(buf)
+    pos = (idx + np.arange(n)) - delay
+    pos = np.where(pos < 0.0, pos + size, pos)
+    i0 = pos.astype(np.int64)
+    frac = pos - i0
+    i1 = i0 + 1
+    i1 = np.where(i1 >= size, 0, i1)
+    return buf[i0] * (1.0 - frac) + buf[i1] * frac
 
 
 class Chorus:
@@ -31,38 +71,22 @@ class Chorus:
             return x
         n = len(x)
         out = np.empty(n, dtype=np.float64)
-        buf = self.buf
-        size = len(buf)
-        base = self.base
-        depth = self.depth
-        fb = self.feedback
-        inc = self.inc
-        mix = self.mix
-        phase = self.phase
-        idx = self.idx
-        for i in range(n):
-            lfo = np.sin(phase)
-            delay = base + depth * lfo
-            read = idx - delay
-            while read < 0.0:
-                read += size
-            i0 = int(read)
-            frac = read - i0
-            i1 = i0 + 1
-            if i1 >= size:
-                i1 = 0
-            wet = buf[i0] * (1.0 - frac) + buf[i1] * frac
-            buf[idx] = x[i] + wet * fb
-            idx += 1
-            if idx >= size:
-                idx = 0
-            phase += inc
-            if phase >= TWO_PI:
-                phase -= TWO_PI
-            out[i] = x[i] + wet * mix
-        self.idx = idx
-        self.phase = phase
+        limit = int(self.base - self.depth) - 2
+        for a, b in _chunks(n, limit):
+            out[a:b] = self._process_chunk(x[a:b])
         return out
+
+    def _process_chunk(self, x):
+        n = len(x)
+        buf = self.buf
+        idx = self.idx
+        phases = self.phase + self.inc * np.arange(n)
+        delay = self.base + self.depth * np.sin(phases)
+        wet = _interp_read(buf, idx, n, delay)
+        _ring_write(buf, idx, x + wet * self.feedback)
+        self.idx = (idx + n) % len(buf)
+        self.phase = float(np.mod(self.phase + self.inc * n, TWO_PI))
+        return x + wet * self.mix
 
 
 class Delay:
@@ -89,33 +113,22 @@ class Delay:
             return x
         n = len(x)
         out = np.empty(n, dtype=np.float64)
-        buf = self.buf
-        size = len(buf)
-        fb = self.feedback
-        damp = self.damp
-        filt = self.filter
-        idx = self.idx
-        mix = self.mix
-        delay = self.time
-        for i in range(n):
-            read = idx - delay
-            while read < 0.0:
-                read += size
-            i0 = int(read)
-            frac = read - i0
-            i1 = i0 + 1
-            if i1 >= size:
-                i1 = 0
-            wet = buf[i0] * (1.0 - frac) + buf[i1] * frac
-            filt = wet * (1.0 - damp) + filt * damp
-            buf[idx] = x[i] + filt * fb
-            idx += 1
-            if idx >= size:
-                idx = 0
-            out[i] = x[i] + wet * mix
-        self.idx = idx
-        self.filter = filt
+        for a, b in _chunks(n, int(self.time)):
+            out[a:b] = self._process_chunk(x[a:b])
         return out
+
+    def _process_chunk(self, x):
+        n = len(x)
+        buf = self.buf
+        idx = self.idx
+        damp = self.damp
+        wet = _interp_read(buf, idx, n, self.time)
+        filt, _ = lfilter([1.0 - damp], [1.0, -damp], wet,
+                          zi=[damp * self.filter])
+        _ring_write(buf, idx, x + filt * self.feedback)
+        self.idx = (idx + n) % len(buf)
+        self.filter = float(filt[-1])
+        return x + wet * self.mix
 
 
 class _Comb:
@@ -127,13 +140,16 @@ class _Comb:
         self.filter = 0.0
 
     def process(self, x):
+        """Process a block no longer than the buffer; returns the delayed read."""
+        n = len(x)
         buf = self.buf
-        y = buf[self.idx]
-        self.filter = y * (1.0 - self.damp) + self.filter * self.damp
-        buf[self.idx] = x + self.filter * self.fb
-        self.idx += 1
-        if self.idx >= len(buf):
-            self.idx = 0
+        damp = self.damp
+        y = _ring_read(buf, self.idx, n)
+        filt, _ = lfilter([1.0 - damp], [1.0, -damp], y,
+                          zi=[damp * self.filter])
+        _ring_write(buf, self.idx, x + filt * self.fb)
+        self.idx = (self.idx + n) % len(buf)
+        self.filter = float(filt[-1])
         return y
 
 
@@ -144,12 +160,12 @@ class _Allpass:
         self.fb = feedback
 
     def process(self, x):
+        """Process a block no longer than the buffer."""
+        n = len(x)
         buf = self.buf
-        y = buf[self.idx]
-        buf[self.idx] = x + y * self.fb
-        self.idx += 1
-        if self.idx >= len(buf):
-            self.idx = 0
+        y = _ring_read(buf, self.idx, n)
+        _ring_write(buf, self.idx, x + y * self.fb)
+        self.idx = (self.idx + n) % len(buf)
         return y - x
 
 
@@ -176,20 +192,19 @@ class Reverb:
             return x
         n = len(x)
         out = np.empty(n, dtype=np.float64)
-        combs = self.combs
-        aps = self.allpasses
-        inv = self._inv
-        mix = self.mix
-        for i in range(n):
-            xi = x[i]
-            s = 0.0
-            for c in combs:
-                s += c.process(xi)
-            s *= inv
-            for a in aps:
-                s = a.process(s)
-            out[i] = xi + s * mix
+        limit = min(len(u.buf) for u in self.combs + self.allpasses)
+        for a, b in _chunks(n, limit):
+            out[a:b] = self._process_chunk(x[a:b])
         return out
+
+    def _process_chunk(self, x):
+        s = np.zeros(len(x), dtype=np.float64)
+        for c in self.combs:
+            s += c.process(x)
+        s *= self._inv
+        for a in self.allpasses:
+            s = a.process(s)
+        return x + s * self.mix
 
 
 class Bitcrusher:
@@ -212,21 +227,24 @@ class Bitcrusher:
         if not self.enabled:
             return x
         n = len(x)
-        out = np.empty(n, dtype=np.float64)
+        if n == 0:
+            return np.empty(0, dtype=np.float64)
         levels = float(2 ** max(int(self.bits), 1))
         down = self.downsample
-        hold = self.hold
         counter = self.counter
-        for i in range(n):
-            if counter <= 0:
-                hold = x[i]
-                counter = down
-            counter -= 1
-            q = np.round(hold * levels) / levels
-            out[i] = q
-        self.hold = hold
-        self.counter = counter
-        return out
+        first = counter if counter > 0 else 0
+        refresh = np.arange(first, n, down)
+        if len(refresh):
+            src = np.full(n, -1, dtype=np.int64)
+            src[refresh] = refresh
+            src = np.maximum.accumulate(src)
+            held = np.where(src >= 0, x[np.maximum(src, 0)], self.hold)
+            self.counter = down - n + int(refresh[-1])
+        else:
+            held = np.full(n, self.hold, dtype=np.float64)
+            self.counter = counter - n
+        self.hold = float(held[-1])
+        return np.round(held * levels) / levels
 
 
 class EffectChain:
