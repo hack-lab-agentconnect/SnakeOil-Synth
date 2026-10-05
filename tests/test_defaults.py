@@ -37,6 +37,6 @@ def test_fresh_engine_filter_is_active():
 def test_fresh_engine_held_note_is_finite_and_audible():
     e = make()
     e.note_on(60, 100)
-    out = np.concatenate([e.render(256) for _ in range(20)])
+    out = np.concatenate([e.render(256)[:, 0] for _ in range(20)])
     assert np.all(np.isfinite(out))
     assert float(np.sqrt(np.mean(out.astype(np.float64) ** 2))) > 0.01

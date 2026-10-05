@@ -60,7 +60,7 @@ def test_saw_wave_matches_formula():
 def render_osc1(engine, note=57, blocks=20):
     engine.set_osc_levels(1.0, 0.0)
     engine.note_on(note, 100)
-    return np.concatenate([engine.render(BLOCK) for _ in range(blocks)])
+    return np.concatenate([engine.render(BLOCK)[:, 0] for _ in range(blocks)])
 
 
 def test_layer_off_is_bit_identical_to_saw_only():

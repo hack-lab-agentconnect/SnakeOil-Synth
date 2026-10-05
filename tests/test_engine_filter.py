@@ -7,7 +7,7 @@ from midi_synth.engine import SynthEngine
 def rms_after(engine, note, blocks=30):
     engine.note_on(note, 100)
     for _ in range(blocks):
-        out = engine.render(256)
+        out = engine.render(256)[:, 0]
     return float(np.sqrt(np.mean(out.astype(np.float64) ** 2)))
 
 

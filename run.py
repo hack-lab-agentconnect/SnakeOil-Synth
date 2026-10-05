@@ -48,6 +48,20 @@ def parse_args(argv):
     return p.parse_args(argv)
 
 
+def copy_block_to_output(outdata, block):
+    """Write a stereo (frames, 2) block into outdata of any channel count.
+
+    Two or more channels get left and right in the first two and silence in
+    the rest; a single channel gets the mean of left and right.
+    """
+    channels = outdata.shape[1]
+    if channels >= 2:
+        outdata[:, :2] = block
+        outdata[:, 2:] = 0.0
+    else:
+        outdata[:, 0] = block.mean(axis=1)
+
+
 def list_devices():
     print("MIDI inputs:")
     try:
@@ -76,6 +90,7 @@ HELP_TEXT = """commands:
   fx <chorus|delay|reverb|bitcrush> <on|off|toggle>
   chorusdepth <0-1>          chorus depth (default 0.3)
   delaytime <200-4000>       delay time in ms
+  pingpong <on|off>          bounce delay echoes between left and right
   reverbamt <0-1>            reverb wet amount
   crush <0-1>                bitcrush amount (bit depth and downsampling)
   square <on|off>            osc 1 square layer over the saw
@@ -137,6 +152,8 @@ def console_loop(engine):
                 engine.set_chorus_depth(float(parts[1]))
             elif cmd == "delaytime":
                 engine.set_delay_time(min(max(float(parts[1]), 200.0), 4000.0))
+            elif cmd == "pingpong":
+                engine.set_delay_pingpong(parts[1].lower() == "on")
             elif cmd == "reverbamt":
                 engine.set_reverb_amount(float(parts[1]))
             elif cmd == "crush":
@@ -270,10 +287,7 @@ def main(argv=None):
     stream = None
 
     def callback(outdata, frames, time_info, status):
-        block = engine.render(frames)
-        ch = outdata.shape[1]
-        for c in range(ch):
-            outdata[:, c] = block
+        copy_block_to_output(outdata, engine.render(frames))
 
     try:
         stream, choice = open_output_stream(sd, choice, args, samplerate, callback)

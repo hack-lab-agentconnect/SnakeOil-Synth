@@ -15,7 +15,7 @@ def peak_hz(engine, note=69, skip=10, blocks=40):
     engine.note_on(note, 100)
     for _ in range(skip):
         engine.render(BLOCK)
-    data = np.concatenate([engine.render(BLOCK) for _ in range(blocks)]).astype(np.float64)
+    data = np.concatenate([engine.render(BLOCK)[:, 0] for _ in range(blocks)]).astype(np.float64)
     spectrum = np.abs(np.fft.rfft(data * np.hanning(len(data))))
     return float(np.argmax(spectrum)) * SR / len(data)
 

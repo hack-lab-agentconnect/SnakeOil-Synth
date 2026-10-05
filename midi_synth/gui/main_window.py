@@ -82,12 +82,14 @@ class MainWindow(QMainWindow):
             control = ParamControl(self.registry, param)
             control.learnRequested.connect(self._on_learn_requested)
             control.clearRequested.connect(self._on_clear_requested)
-            cols = columns.setdefault(param.group, {})
+            cells = columns.setdefault(param.group, {})
             if param.under:
-                box.layout().addWidget(control, 1, cols[param.under])
+                row, col = cells[param.under]
+                row += 1
             else:
-                cols[param.id] = len(cols)
-                box.layout().addWidget(control, 0, cols[param.id])
+                row, col = 0, sum(1 for r, _ in cells.values() if r == 0)
+            cells[param.id] = (row, col)
+            box.layout().addWidget(control, row, col)
             self.controls[param.id] = control
         grid = QGridLayout()
         for index, (name, box) in enumerate(groups.items()):

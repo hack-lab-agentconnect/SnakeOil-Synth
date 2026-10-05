@@ -16,9 +16,16 @@ toggleable effects chain.
 - **Octave switches:** osc 1 can play one octave down, osc 2 one octave up (relative to the played note, on top of its tuning). Osc 2's octave-up switch is on by default.
 - Toggleable effects: **Chorus, Delay, Reverb, Bitcrush**. In the GUI each has a
   dial under its button: chorus **Depth** (how far the delay swings; the LFO rate is fixed
-  at 0.5 Hz), delay **Time** (200-4000 ms, log scale), reverb **Amount** (wet
+  at 0.5 Hz), delay **Time** (200-4000 ms, log scale) with a **Ping-pong** button below it,
+  reverb **Amount** (wet
   level) and bitcrush **Crush** (bit depth and downsampling together). The dials
   have no default MIDI CC; use MIDI Learn to bind them.
+- **Stereo output.** Voices and the filter are mono; the effect chain is stereo. Chorus
+  runs a left and a right delay line with opposite LFO phase, reverb uses a second comb/allpass
+  bank offset by 23 samples for the right channel, delay keeps a buffer per channel, and the
+  bitcrusher works per channel. The **Ping-pong** button (console: `pingpong on`) bounces the
+  echoes between the left and right speakers. With all effects off both channels are identical.
+  On a 1-channel device the output is the mean of left and right; channels beyond 2 are silent.
 - Resonant 12 dB/oct **low-pass filter** (cutoff + resonance), per voice or on the master bus. The filter is on by default at **2000 Hz**; turning the cutoff fully right (20 kHz) bypasses it.
 - Pitch-bend and velocity support; per-voice ADSR envelope.
 
@@ -104,6 +111,7 @@ An interactive console starts alongside the audio. Type `help`. Commands:
 fx <chorus|delay|reverb|bitcrush> <on|off|toggle>
 chorusdepth <0-1>   # chorus depth (default 0.3; LFO rate fixed at 0.5 Hz)
 delaytime <200-4000>  # delay time in ms (default 300)
+pingpong <on|off>   # bounce delay echoes between left and right (default off)
 reverbamt <0-1>     # reverb wet amount (default 0.3)
 crush <0-1>         # bitcrush amount: bit depth and downsampling (default 0.5)
 square <on|off>     # oscillator 1 square layer over the saw (default on)
@@ -174,6 +182,10 @@ note ─▶ ADSR ─▶ osc1 ──┬──────────────
                        └─(mode: fm/am/ring/sync)─▶ osc2 ─┘
 ```
 
+Everything up to the sum is mono. The mono mix is copied into left and right channels at the
+start of the effect chain; the effects, the volume and the soft clip then run per channel, and
+the engine returns an `(n, 2)` float32 block.
+
 `osc2` pitch = note pitch × 2^((semitones + cents/100)/12).
 
 ## Performance
@@ -191,4 +203,5 @@ implementations in `tests/reference_dsp.py`.
 python render_demo.py --out demo.wav --effects reverb,delay --pwm1 0.3 --mode ring --fm 0.7 --level2 0.6
 ```
 
-Renders a 12-note chord to a WAV file using only NumPy and the standard library.
+Renders a 12-note chord to a stereo (2-channel, 16-bit, interleaved L/R) WAV file using only
+NumPy and the standard library.

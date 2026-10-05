@@ -28,7 +28,7 @@ def render(engine, path, seconds, notes, release_tail=0.4):
     gate_off_at = max(int(sr * (seconds - release_tail)), 1)
     for note in notes:
         engine.note_on(note, 100)
-    frames = bytearray()
+    frames = bytearray()  # interleaved L/R, 16-bit
     pos = 0
     released = False
     while pos < total:
@@ -41,7 +41,7 @@ def render(engine, path, seconds, notes, release_tail=0.4):
                 engine.note_off(note)
             released = True
     with wave.open(path, "wb") as w:
-        w.setnchannels(1)
+        w.setnchannels(2)
         w.setsampwidth(2)
         w.setframerate(sr)
         w.writeframes(bytes(frames))

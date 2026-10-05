@@ -197,7 +197,14 @@ def build_registry(engine):
               maximum=MASTER_GAIN_MAX, get=lambda: p["master_gain"],
               set=engine.set_master_gain),
     ]
+    pingpong = Param(
+        id="fx_delay_pingpong", label="Ping-pong", group="Effects", kind=TOGGLE,
+        under="fx_delay_time", get=lambda: fx.delay.pingpong,
+        set=engine.set_delay_pingpong,
+        tooltip="Bounce the echoes between the left and right speakers.")
     for n in EFFECT_NAMES:
         params.append(effect(n))
         params.append(dials[n])
+        if n == "delay":
+            params.append(pingpong)
     return ParamRegistry(params)

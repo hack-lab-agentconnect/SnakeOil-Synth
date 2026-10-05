@@ -184,6 +184,7 @@ def test_engine_status_includes_dials(rig):
     assert s["delay_time"] == 800.0
     assert s["reverb_amount"] == 0.6
     assert s["crush_amount"] == 0.25
+    assert s["delay_pingpong"] is False
 
 
 def test_chorus_rate_param_removed(rig):

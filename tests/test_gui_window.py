@@ -148,3 +148,8 @@ def test_effect_dials_sit_under_their_toggles(rig):
         trow, tcol = pos("fx_" + name)
         drow, dcol = pos(dial.id)
         assert dcol == tcol and drow > trow
+
+    trow, tcol = pos("fx_delay")
+    drow, dcol = pos("fx_delay_time")
+    prow, pcol = pos("fx_delay_pingpong")
+    assert pcol == dcol == tcol and prow > drow > trow

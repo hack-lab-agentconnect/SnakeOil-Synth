@@ -203,6 +203,10 @@ class SynthEngine:
         with self.lock:
             self.effects.delay.set_time_ms(ms)
 
+    def set_delay_pingpong(self, on):
+        with self.lock:
+            self.effects.delay.set_pingpong(on)
+
     def set_reverb_amount(self, v):
         with self.lock:
             self.effects.reverb.set_amount(v)
@@ -229,12 +233,11 @@ class SynthEngine:
             coeffs = params["lpf_coeffs"]
             if coeffs is not None and params["lpf_mode"] == "master":
                 mix = self.master_lpf.process(mix, coeffs)
+            out = np.vstack([mix, mix])
             if apply_effects:
-                # Temporary shim (removed in the stereo output task): run the
-                # mono mix through the stereo chain and keep the left channel.
-                mix = np.array(self.effects.process(np.vstack([mix, mix]))[0])
-            mix *= params["master_gain"]
-            return np.tanh(mix).astype(np.float32)
+                out = self.effects.process(out)
+            out = np.tanh(out * params["master_gain"])
+            return np.ascontiguousarray(out.T).astype(np.float32)
 
     def status(self):
         with self.lock:
@@ -260,6 +263,7 @@ class SynthEngine:
                 "lpf_mode": self.params["lpf_mode"],
                 "chorus_depth": self.effects.chorus.amount,
                 "delay_time": self.effects.delay.time_ms,
+                "delay_pingpong": self.effects.delay.pingpong,
                 "reverb_amount": self.effects.reverb.mix,
                 "crush_amount": self.effects.bitcrush.amount,
                 "effects": fx,

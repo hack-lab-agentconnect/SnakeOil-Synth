@@ -17,6 +17,7 @@ CASES = [
     ("LPF master mode", lambda e: e.set_lpf_mode("master")),
     ("chorus", fx("chorus")),
     ("delay", fx("delay")),
+    ("delay ping-pong", lambda e: (e.set_effect("delay", True), e.set_delay_pingpong(True))),
     ("reverb", fx("reverb")),
     ("bitcrush", fx("bitcrush")),
     ("all four effects", fx("chorus", "delay", "reverb", "bitcrush")),
