@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 
 from .config import FLT_ENV_OCTAVES, FLT_VEL_OCTAVES
@@ -107,17 +109,27 @@ class Voice:
         self.velocity = 0.0
         self.trigger_order = 0
         self._lpf_bypassed = False
+        self.glide_from = None
+        self.glide_total = 0.0
+        self.glide_pos = 0.0
 
     @property
     def active(self):
         return self.env.active
 
-    def note_on(self, note, velocity, order):
+    def note_on(self, note, velocity, order, glide_from=None, glide_time=0.0):
         self.note = note
         self.gate = True
         self.freq = midi_note_to_freq(note)
         self.velocity = velocity
         self.trigger_order = order
+        if glide_from is not None and glide_time > 0.0:
+            self.glide_from = glide_from
+            self.glide_total = glide_time
+        else:
+            self.glide_from = None
+            self.glide_total = 0.0
+        self.glide_pos = 0.0
         self.osc1.reset()
         self.osc2.reset()
         self.env.note_on()
@@ -138,9 +150,10 @@ class Voice:
         amount = params.get("flt_env_amount", 0.0)
         keytrack = params.get("flt_keytrack", 0.0)
         vel_amt = params.get("flt_vel", 0.0)
-        if not (amount or keytrack or vel_amt):
+        lfo_oct = params.get("lfo_filter_oct", 0.0)
+        if not (amount or keytrack or vel_amt or lfo_oct):
             return shared
-        octaves = 0.0
+        octaves = lfo_oct
         if amount:
             octaves += amount * FLT_ENV_OCTAVES * float(np.mean(self.flt_env.process(n)))
         if keytrack:
@@ -155,9 +168,27 @@ class Voice:
 
     def render(self, n, params):
         self.osc1.layer_square = params["osc1_square"]
-        self.osc1.duty = params["osc1_pwm"]
-        self.osc2.duty = params["osc2_pwm"]
-        freq = self.freq * params["pitch_ratio"]
+        lfo_pwm = params.get("lfo_pwm", 0.0)
+        if lfo_pwm:
+            self.osc1.duty = min(max(params["osc1_pwm"] + lfo_pwm, 0.0), 0.5)
+            self.osc2.duty = min(max(params["osc2_pwm"] + lfo_pwm, 0.0), 0.5)
+        else:
+            self.osc1.duty = params["osc1_pwm"]
+            self.osc2.duty = params["osc2_pwm"]
+        base = self.freq
+        if self.glide_from is not None:
+            centre = self.glide_pos + 0.5 * n / self.sr
+            remaining = max(0.0, 1.0 - centre / self.glide_total)
+            if remaining > 0.0:
+                base = math.exp(math.log(base) + (
+                    math.log(self.glide_from) - math.log(base)) * remaining)
+            self.glide_pos += n / self.sr
+            if self.glide_pos >= self.glide_total:
+                self.glide_from = None
+        freq = base * params["pitch_ratio"]
+        lfo_pitch = params.get("lfo_pitch_ratio", 1.0)
+        if lfo_pitch != 1.0:
+            freq *= lfo_pitch
         f2 = freq * semitones_to_ratio(
             params["detune2_semitones"], params["detune2_cents"]
         ) * (2.0 if params["osc2_octave_up"] else 1.0)
@@ -204,4 +235,8 @@ class Voice:
             self._lpf_bypassed = coeffs is None
         env = self.env.process(n)
         amp = 0.22 * (0.3 + 0.7 * self.velocity)
-        return mix * env * amp
+        out = mix * env * amp
+        lfo_amp = params.get("lfo_amp")
+        if lfo_amp is not None:
+            out = out * lfo_amp
+        return out

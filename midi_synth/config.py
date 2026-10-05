@@ -45,3 +45,13 @@ DEFAULT_FLT_ENV = {
     "sustain": 0.3,
     "release": 0.3,
 }
+
+LFO_WAVES = ("sine", "triangle", "saw", "square", "random")
+LFO_DESTS = ("pitch", "filter", "pwm", "amp")
+LFO_RATE_MIN = 0.05
+LFO_RATE_MAX = 20.0
+DEFAULT_LFO_RATE = 5.0
+LFO_PITCH_SEMITONES = 2.0
+LFO_FILTER_OCTAVES = 3.0
+LFO_PWM_RANGE = 0.25
+GLIDE_MAX = 2.0

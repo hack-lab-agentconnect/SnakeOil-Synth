@@ -126,6 +126,26 @@ All of these default to off, so the default sound is unchanged. They apply to th
 per-voice filter only; with *Master-bus filter* on they are ignored. A cutoff pushed to
 20 kHz or more bypasses the filter for that note.
 
+## LFO and glide
+
+- **LFO** (*LFO* group): one global low-frequency oscillator shared by all voices.
+  *Rate* 0.05-20 Hz, *Depth* 0-1 (default 0 = off, the LFO does no work at all),
+  *Wave* sine, triangle, saw, square or random (sample and hold, one new value per cycle),
+  *Dest* pitch, filter, pwm or amp. At full depth the destinations move: pitch by up to
+  +/-2 semitones, filter cutoff by +/-3 octaves, pulse width of both oscillators by
+  +/-0.25 (clamped to 0-0.5), and volume as tremolo from full level down to silence.
+  The pitch-bend wheel is unaffected. Console: `lfo <rate> <depth> [wave] [dest]`.
+- **Glide** (*Glide* group): *Time* 0-2 s (default 0 = off) slides each new note from the
+  previous note's pitch (straight line in semitones). *Legato only* glides only when
+  another key is still held when the new note starts. Console: `glide <seconds>`.
+
+LFO and glide values update once per audio block (about 5 ms), which is smooth for
+musical rates but steps at extreme settings. With the filter destination the per-voice
+filter is recalculated every block; with *Master-bus filter* on, the master filter
+coefficients are recalculated every block instead. A filter pushed to 20 kHz or more by
+the LFO is bypassed for that block, and the LFO can close an otherwise open (20 kHz)
+filter.
+
 ## Low latency on Windows (ASIO / WASAPI)
 
 By default PortAudio picks the **MME** host API, which can add ~100–200 ms of
@@ -182,6 +202,8 @@ lpfmode <voice|master>  # filter placement
 adsr <a> <d> <s> <r>  # amp envelope: attack and decay in seconds (0.001-5), sustain 0-1, release in seconds (0.001-10)
 velocity <on|off>   # off = fixed note velocity (default on)
 fltenv <-1..1>      # filter envelope amount (per-voice filter; default 0)
+lfo <rate> <depth> [wave] [dest]  # LFO: 0.05-20 Hz, depth 0-1 (0 = off); wave sine|triangle|saw|square|random; dest pitch|filter|pwm|amp
+glide <seconds>     # slide between notes, 0-2 s (default 0 = off)
 gain <0-1.2>
 alloff | status | quit
 ```

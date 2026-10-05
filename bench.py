@@ -20,6 +20,12 @@ CASES = [
     ("delay ping-pong", lambda e: (e.set_effect("delay", True), e.set_delay_pingpong(True))),
     ("reverb", fx("reverb")),
     ("bitcrush", fx("bitcrush")),
+    ("LFO pitch depth 1", lambda e: (e.set_lfo_depth(1.0), e.set_lfo_dest("pitch"))),
+    ("LFO filter depth 1", lambda e: (e.set_lfo_depth(1.0), e.set_lfo_dest("filter"))),
+    ("LFO filter, master mode",
+     lambda e: (e.set_lfo_depth(1.0), e.set_lfo_dest("filter"), e.set_lpf_mode("master"))),
+    ("LFO pwm depth 1", lambda e: (e.set_lfo_depth(1.0), e.set_lfo_dest("pwm"))),
+    ("LFO amp depth 1", lambda e: (e.set_lfo_depth(1.0), e.set_lfo_dest("amp"))),
     ("all four effects", fx("chorus", "delay", "reverb", "bitcrush")),
 ]
 

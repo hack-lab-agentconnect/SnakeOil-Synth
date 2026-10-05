@@ -18,6 +18,8 @@ GROUP_POSITIONS = {
     "Master": (1, 2, 1, 1),
     "Amp Envelope": (2, 0, 1, 1),
     "Filter Env": (2, 1, 1, 1),
+    "LFO": (2, 2, 1, 1),
+    "Glide": (3, 0, 1, 1),
 }
 
 

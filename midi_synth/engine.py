@@ -22,13 +22,23 @@ from .config import (
     DEFAULT_ADSR,
     DEFAULT_FLT_ENV,
     FIXED_VELOCITY,
+    LFO_WAVES,
+    LFO_DESTS,
+    LFO_RATE_MIN,
+    LFO_RATE_MAX,
+    DEFAULT_LFO_RATE,
+    LFO_PITCH_SEMITONES,
+    LFO_FILTER_OCTAVES,
+    LFO_PWM_RANGE,
+    GLIDE_MAX,
     AMP_TIME_MIN,
     AMP_ATTACK_MAX,
     AMP_DECAY_MAX,
     AMP_RELEASE_MAX,
 )
 from .filters import LowPass, LPF_MIN_HZ, LPF_MAX_HZ, lpf_coefficients
-from .voice import IDLE, Voice
+from .lfo import LFO
+from .voice import IDLE, Voice, midi_note_to_freq
 from .effects import EffectChain
 
 
@@ -73,7 +83,20 @@ class SynthEngine:
             "flt_decay": DEFAULT_FLT_ENV["decay"],
             "flt_sustain": DEFAULT_FLT_ENV["sustain"],
             "flt_release": DEFAULT_FLT_ENV["release"],
+            "lfo_rate": DEFAULT_LFO_RATE,
+            "lfo_depth": 0.0,
+            "lfo_wave": "sine",
+            "lfo_dest": "pitch",
+            "glide_time": 0.0,
+            "glide_legato": False,
+            "lfo_pitch_ratio": 1.0,
+            "lfo_filter_oct": 0.0,
+            "lfo_pwm": 0.0,
+            "lfo_amp": None,
         }
+        self.lfo = LFO()
+        self._last_freq = None
+        self._master_bypassed = False
         self._order = 0
         self.sustain = False
         self._sustained = set()
@@ -226,6 +249,43 @@ class SynthEngine:
     def set_amp_release(self, seconds):
         self._set_envelope("amp_release", seconds, AMP_TIME_MIN, AMP_RELEASE_MAX)
 
+    def _clear_lfo_mod(self):
+        p = self.params
+        p["lfo_pitch_ratio"] = 1.0
+        p["lfo_filter_oct"] = 0.0
+        p["lfo_pwm"] = 0.0
+        p["lfo_amp"] = None
+
+    def set_lfo_rate(self, hz):
+        self._set_unit("lfo_rate", hz, LFO_RATE_MIN, LFO_RATE_MAX)
+
+    def set_lfo_depth(self, depth):
+        with self.lock:
+            self.params["lfo_depth"] = min(max(float(depth), 0.0), 1.0)
+            self._clear_lfo_mod()
+
+    def set_lfo_wave(self, wave):
+        if wave not in LFO_WAVES:
+            raise ValueError("unknown LFO wave: %r (choose from %s)" % (wave, ", ".join(LFO_WAVES)))
+        with self.lock:
+            self.params["lfo_wave"] = wave
+            return wave
+
+    def set_lfo_dest(self, dest):
+        if dest not in LFO_DESTS:
+            raise ValueError("unknown LFO destination: %r (choose from %s)" % (dest, ", ".join(LFO_DESTS)))
+        with self.lock:
+            self.params["lfo_dest"] = dest
+            self._clear_lfo_mod()
+            return dest
+
+    def set_glide_time(self, seconds):
+        self._set_unit("glide_time", seconds, 0.0, GLIDE_MAX)
+
+    def set_glide_legato(self, on):
+        with self.lock:
+            self.params["glide_legato"] = bool(on)
+
     def set_master_gain(self, gain):
         with self.lock:
             self.params["master_gain"] = min(max(gain, 0.0), 1.5)
@@ -244,6 +304,7 @@ class SynthEngine:
     def note_on(self, note, velocity=100):
         with self.lock:
             self._sustained.discard(note)
+            held = any(v.gate for v in self.voices)
             for v in self.voices:
                 if v.active and v.note == note and v.gate:
                     v.gate = False
@@ -251,7 +312,13 @@ class SynthEngine:
             self._order += 1
             voice = self._allocate_voice()
             vel = velocity / 127.0 if self.params["velocity_on"] else FIXED_VELOCITY
-            voice.note_on(note, vel, self._order)
+            glide_time = self.params["glide_time"]
+            glide_from = None
+            if (glide_time > 0.0 and self._last_freq is not None
+                    and (not self.params["glide_legato"] or held)):
+                glide_from = self._last_freq
+            self._last_freq = midi_note_to_freq(note)
+            voice.note_on(note, vel, self._order, glide_from, glide_time)
 
     def note_off(self, note):
         with self.lock:
@@ -328,16 +395,54 @@ class SynthEngine:
             fx.enabled = not fx.enabled
             return fx.enabled
 
+    def _run_lfo(self, n):
+        """Advance the LFO one block and publish its per-block modulation.
+
+        Returns True when the destination is the filter.
+        """
+        p = self.params
+        dest = p["lfo_dest"]
+        depth = p["lfo_depth"]
+        mid, arr = self.lfo.next_block(
+            n, self.sr, p["lfo_rate"], p["lfo_wave"], want_array=dest == "amp")
+        if dest == "pitch":
+            p["lfo_pitch_ratio"] = 2.0 ** (depth * LFO_PITCH_SEMITONES * mid / 12.0)
+        elif dest == "filter":
+            p["lfo_filter_oct"] = depth * LFO_FILTER_OCTAVES * mid
+        elif dest == "pwm":
+            p["lfo_pwm"] = depth * LFO_PWM_RANGE * mid
+        else:
+            p["lfo_amp"] = 1.0 - depth * (0.5 - 0.5 * arr)
+        return dest == "filter"
+
+    def _master_lfo_coeffs(self):
+        p = self.params
+        cutoff = p["lpf_cutoff"] * 2.0 ** p["lfo_filter_oct"]
+        cutoff = min(max(cutoff, LPF_MIN_HZ), 0.45 * self.sr)
+        if cutoff >= LPF_MAX_HZ / 1.01:
+            return None
+        return lpf_coefficients(cutoff, p["lpf_resonance"], self.sr)
+
     def render(self, n=None, apply_effects=True):
         if n is None:
             n = self.block_size
         with self.lock:
             mix = np.zeros(n, dtype=np.float64)
             params = self.params
+            lfo_filter = False
+            if params["lfo_depth"] > 0.0:
+                lfo_filter = self._run_lfo(n)
             for v in self.voices:
                 if v.active:
                     mix += v.render(n, params)
             coeffs = params["lpf_coeffs"]
+            if lfo_filter and params["lpf_mode"] == "master":
+                coeffs = self._master_lfo_coeffs()
+                if coeffs is None:
+                    self._master_bypassed = True
+                elif self._master_bypassed:
+                    self.master_lpf.reset()
+                    self._master_bypassed = False
             if coeffs is not None and params["lpf_mode"] == "master":
                 mix = self.master_lpf.process(mix, coeffs)
             out = np.vstack([mix, mix])
@@ -380,6 +485,12 @@ class SynthEngine:
                 "flt_decay": self.params["flt_decay"],
                 "flt_sustain": self.params["flt_sustain"],
                 "flt_release": self.params["flt_release"],
+                "lfo_rate": self.params["lfo_rate"],
+                "lfo_depth": self.params["lfo_depth"],
+                "lfo_wave": self.params["lfo_wave"],
+                "lfo_dest": self.params["lfo_dest"],
+                "glide_time": self.params["glide_time"],
+                "glide_legato": self.params["glide_legato"],
                 "chorus_depth": self.effects.chorus.amount,
                 "delay_time": self.effects.delay.time_ms,
                 "delay_pingpong": self.effects.delay.pingpong,

@@ -11,6 +11,11 @@ from .config import (
     AMP_ATTACK_MAX,
     AMP_DECAY_MAX,
     AMP_RELEASE_MAX,
+    LFO_WAVES,
+    LFO_DESTS,
+    LFO_RATE_MIN,
+    LFO_RATE_MAX,
+    GLIDE_MAX,
 )
 from .filters import LPF_MIN_HZ, LPF_MAX_HZ
 
@@ -258,6 +263,29 @@ def build_registry(engine):
         envelope("flt_release", "Release", AMP_RELEASE_MAX,
                  "Time for the filter envelope to fall after key release.",
                  group="Filter Env"),
+    ]
+    params += [
+        Param(id="lfo_rate", label="Rate", group="LFO", kind=CONTINUOUS,
+              minimum=LFO_RATE_MIN, maximum=LFO_RATE_MAX, scale="log",
+              fmt="{:.2f} Hz", get=lambda: p["lfo_rate"], set=engine.set_lfo_rate,
+              tooltip="LFO speed."),
+        Param(id="lfo_depth", label="Depth", group="LFO", kind=CONTINUOUS,
+              get=lambda: p["lfo_depth"], set=engine.set_lfo_depth,
+              tooltip="LFO amount. 0 = LFO off."),
+        Param(id="lfo_wave", label="Wave", group="LFO", kind=CHOICE,
+              choices=LFO_WAVES, get=lambda: p["lfo_wave"], set=engine.set_lfo_wave,
+              tooltip="LFO waveform. Random = sample and hold."),
+        Param(id="lfo_dest", label="Dest", group="LFO", kind=CHOICE,
+              choices=LFO_DESTS, get=lambda: p["lfo_dest"], set=engine.set_lfo_dest,
+              tooltip="What the LFO modulates: pitch, filter cutoff, "
+                      "pulse width or volume."),
+        Param(id="glide_time", label="Time", group="Glide", kind=CONTINUOUS,
+              minimum=0.0, maximum=GLIDE_MAX, fmt="{:.2f} s",
+              get=lambda: p["glide_time"], set=engine.set_glide_time,
+              tooltip="Time to slide from the previous note. 0 = off."),
+        Param(id="glide_legato", label="Legato only", group="Glide", kind=TOGGLE,
+              get=lambda: p["glide_legato"], set=engine.set_glide_legato,
+              tooltip="Only glide when another key is still held."),
     ]
     pingpong = Param(
         id="fx_delay_pingpong", label="Ping-pong", group="Effects", kind=TOGGLE,

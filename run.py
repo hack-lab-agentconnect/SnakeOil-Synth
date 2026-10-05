@@ -141,6 +141,10 @@ HELP_TEXT = """commands:
   adsr <a> <d> <s> <r>       amp envelope: attack, decay (s), sustain (0-1), release (s)
   velocity <on|off>          off = every note plays at one fixed velocity
   fltenv <-1..1>             filter envelope amount (per-voice filter)
+  lfo <rate> <depth> [wave] [dest]  LFO: 0.05-20 Hz, depth 0-1 (0 = off),
+                             wave sine|triangle|saw|square|random,
+                             dest pitch|filter|pwm|amp
+  glide <seconds>            slide between notes, 0-2 s (0 = off)
   gain <0-1.2>               master volume
   patch list                 list saved sound patches
   patch save <name>          save the current sound as a patch
@@ -296,6 +300,18 @@ def console_loop(engine, registry=None, patch_store=None, patch_defaults=None):
                     engine.set_velocity_on(on)
             elif cmd == "fltenv":
                 engine.set_flt_env_amount(float(parts[1]))
+            elif cmd == "lfo":
+                if len(parts) < 3 or len(parts) > 5:
+                    raise ValueError("lfo takes rate depth [wave] [dest]")
+                rate, depth = float(parts[1]), float(parts[2])
+                if len(parts) > 3:
+                    engine.set_lfo_wave(parts[3].lower())
+                if len(parts) > 4:
+                    engine.set_lfo_dest(parts[4].lower())
+                engine.set_lfo_rate(rate)
+                engine.set_lfo_depth(depth)
+            elif cmd == "glide":
+                engine.set_glide_time(float(parts[1]))
             elif cmd == "fx":
                 name = parts[1].lower()
                 action = parse_on_off(parts[2], allow_toggle=True) if len(parts) > 2 else "toggle"
