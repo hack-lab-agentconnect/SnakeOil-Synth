@@ -80,6 +80,8 @@ HELP_TEXT = """commands:
   mod <0-1>                  modulation amount (alias: fm)
   tune2 <-12..12>            osc2 coarse semitones
   cents2 <-0.5..0.5>         osc2 fine cents
+  oct1 <on|off>              osc 1 one octave down
+  oct2 <on|off>              osc 2 one octave up
   lpf <20-20000>             low-pass cutoff in Hz (20000 = off)
   lres <0-1>                 low-pass resonance
   lpfmode <voice|master>     filter placement
@@ -134,6 +136,12 @@ def console_loop(engine):
                     engine.set_osc1_waveform(wf)
                 else:
                     engine.set_osc2_waveform(wf)
+            elif cmd in ("oct1", "oct2"):
+                on = parts[1].lower() == "on"
+                if cmd == "oct1":
+                    engine.set_osc1_octave_down(on)
+                else:
+                    engine.set_osc2_octave_up(on)
             elif cmd == "lpf":
                 engine.set_lpf_cutoff(float(parts[1]))
             elif cmd == "lres":

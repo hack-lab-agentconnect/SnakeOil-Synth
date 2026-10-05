@@ -107,24 +107,28 @@ class Voice:
 
     def render(self, n, params):
         freq = self.freq * params["pitch_ratio"]
-        sec_freq = freq * semitones_to_ratio(
+        f2 = freq * semitones_to_ratio(
             params["detune2_semitones"], params["detune2_cents"]
-        )
+        ) * (2.0 if params["osc2_octave_up"] else 1.0)
+        f1 = freq * (0.5 if params["osc1_octave_down"] else 1.0)
+        limit = 0.45 * self.sr
+        f1 = min(f1, limit)
+        f2 = min(f2, limit)
         mode = params["mod_mode"]
         depth = params["fm_depth"]
         if mode == "sync":
-            t1 = self.osc1.advance(freq, n)
-            mod = self.osc1.shape(t1, freq)
-            sec_free = self.osc2.generate(sec_freq, n)
-            ratio = (sec_freq / freq) if freq else 1.0
-            sec_sync = self.osc2.shape(np.mod(t1 * ratio, 1.0), sec_freq)
+            t1 = self.osc1.advance(f1, n)
+            mod = self.osc1.shape(t1, f1)
+            sec_free = self.osc2.generate(f2, n)
+            ratio = (f2 / f1) if f1 else 1.0
+            sec_sync = self.osc2.shape(np.mod(t1 * ratio, 1.0), f2)
             sec = sec_free * (1.0 - depth) + sec_sync * depth
         elif mode == "fm":
-            mod = self.osc1.generate(freq, n)
-            sec = self.osc2.generate(sec_freq, n, phase_mod=mod * params["mod_index"])
+            mod = self.osc1.generate(f1, n)
+            sec = self.osc2.generate(f2, n, phase_mod=mod * params["mod_index"])
         else:
-            mod = self.osc1.generate(freq, n)
-            sec = self.osc2.generate(sec_freq, n)
+            mod = self.osc1.generate(f1, n)
+            sec = self.osc2.generate(f2, n)
             if mode == "am":
                 sec = sec * (1.0 - 0.5 * depth + 0.5 * depth * mod)
             elif mode == "ring":

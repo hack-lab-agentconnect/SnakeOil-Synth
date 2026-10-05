@@ -13,6 +13,7 @@ toggleable effects chain.
 - Waveforms: **sine, square, saw, triangle** (square/saw are band-limited with PolyBLEP).
 - **Second oscillator is phase-modulated (FM) by the first oscillator's output.**
 - Second oscillator **coarse tuning −12..+12 semitones** plus **fine tuning ±0.5 cents**.
+- **Octave switches:** osc 1 can play one octave down, osc 2 one octave up (relative to the played note, on top of its tuning).
 - Toggleable effects: **Chorus, Delay, Reverb, Bitcrush**.
 - Resonant 12 dB/oct **low-pass filter** (cutoff + resonance), per voice or on the master bus.
 - Pitch-bend and velocity support; per-voice ADSR envelope.
@@ -103,6 +104,8 @@ mode <off|fm|am|ring|sync>  # how osc1 modulates osc2
 mod <0-1>           # modulation amount (alias: fm)
 tune2 <-12..12>     # oscillator-2 coarse semitones
 cents2 <-0.5..0.5>  # oscillator-2 fine cents
+oct1 <on|off>       # oscillator 1 one octave down
+oct2 <on|off>       # oscillator 2 one octave up
 lpf <20-20000>      # low-pass cutoff in Hz (20000 = off)
 lres <0-1>          # low-pass resonance
 lpfmode <voice|master>  # filter placement

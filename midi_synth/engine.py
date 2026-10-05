@@ -42,6 +42,8 @@ class SynthEngine:
             "mod_index": 0.0,
             "detune2_semitones": 0.0,
             "detune2_cents": 0.0,
+            "osc1_octave_down": False,
+            "osc2_octave_up": False,
             "pitch_bend": 0.0,
             "pitch_ratio": 1.0,
             "master_gain": 0.8,
@@ -111,6 +113,14 @@ class SynthEngine:
                 self.params["detune2_cents"] = min(
                     max(cents, CENTS_MIN), CENTS_MAX
                 )
+
+    def set_osc1_octave_down(self, on):
+        with self.lock:
+            self.params["osc1_octave_down"] = bool(on)
+
+    def set_osc2_octave_up(self, on):
+        with self.lock:
+            self.params["osc2_octave_up"] = bool(on)
 
     def _update_lpf(self, force_reset=False):
         p = self.params
@@ -225,6 +235,8 @@ class SynthEngine:
                 "fm_depth": self.params["fm_depth"],
                 "detune2_semitones": self.params["detune2_semitones"],
                 "detune2_cents": self.params["detune2_cents"],
+                "osc1_octave_down": self.params["osc1_octave_down"],
+                "osc2_octave_up": self.params["osc2_octave_up"],
                 "master_gain": self.params["master_gain"],
                 "lpf_cutoff": self.params["lpf_cutoff"],
                 "lpf_resonance": self.params["lpf_resonance"],
