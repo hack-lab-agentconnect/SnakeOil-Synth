@@ -29,3 +29,8 @@ DEFAULT_ADSR = {
     "sustain": 0.75,
     "release": 0.180,
 }
+
+AMP_TIME_MIN = 0.001
+AMP_ATTACK_MAX = 5.0
+AMP_DECAY_MAX = 5.0
+AMP_RELEASE_MAX = 10.0

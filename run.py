@@ -135,6 +135,7 @@ HELP_TEXT = """commands:
   lpf <20-20000>             low-pass cutoff in Hz (20000 = off)
   lres <0-1>                 low-pass resonance
   lpfmode <voice|master>     filter placement
+  adsr <a> <d> <s> <r>       amp envelope: attack, decay (s), sustain (0-1), release (s)
   gain <0-1.2>               master volume
   alloff                     release all held notes
   status                     show current settings
@@ -208,6 +209,14 @@ def console_loop(engine):
                 engine.set_lpf_resonance(float(parts[1]))
             elif cmd == "lpfmode":
                 engine.set_lpf_mode(parts[1].lower())
+            elif cmd == "adsr":
+                attack, decay, sustain, release = (float(x) for x in parts[1:5])
+                if len(parts) != 5:
+                    raise ValueError("adsr takes four values")
+                engine.set_amp_attack(attack)
+                engine.set_amp_decay(decay)
+                engine.set_amp_sustain(sustain)
+                engine.set_amp_release(release)
             elif cmd == "fx":
                 name = parts[1].lower()
                 action = parse_on_off(parts[2], allow_toggle=True) if len(parts) > 2 else "toggle"

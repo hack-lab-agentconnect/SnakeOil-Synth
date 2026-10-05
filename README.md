@@ -74,6 +74,23 @@ The window opens by default; use `--no-gui` for the console only.
 - `--profile NAME` starts with a given profile; `--config-dir PATH` uses another
   config directory.
 
+## Amp envelope (ADSR)
+
+The *Envelope* group at the bottom of the window has four vertical sliders that shape
+the volume of every note:
+
+| Slider | Range | Scale | Default |
+|---|---|---|---|
+| Attack | 1 ms - 5 s | log | 6 ms |
+| Decay | 1 ms - 5 s | log | 120 ms |
+| Sustain | 0 - 1 | linear | 0.75 |
+| Release | 1 ms - 10 s | log | 180 ms |
+
+Changes apply to notes that are already sounding as well as to new notes. Double-click
+a slider to restore its default. The console command `adsr <attack_s> <decay_s> <sustain>
+<release_s>` sets all four at once (out-of-range values are clamped). The sliders have no
+default MIDI CC; assign them with MIDI learn.
+
 ## Low latency on Windows (ASIO / WASAPI)
 
 By default PortAudio picks the **MME** host API, which can add ~100–200 ms of
@@ -127,6 +144,7 @@ oct2 <on|off>       # oscillator 2 one octave up (default on)
 lpf <20-20000>      # low-pass cutoff in Hz (default 2000; 20000 = off)
 lres <0-1>          # low-pass resonance
 lpfmode <voice|master>  # filter placement
+adsr <a> <d> <s> <r>  # amp envelope: attack and decay in seconds (0.001-5), sustain 0-1, release in seconds (0.001-10)
 gain <0-1.2>
 alloff | status | quit
 ```

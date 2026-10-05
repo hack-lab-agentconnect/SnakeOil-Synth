@@ -7,6 +7,10 @@ from .config import (
     SEMITONE_MAX,
     CENTS_MIN,
     CENTS_MAX,
+    AMP_TIME_MIN,
+    AMP_ATTACK_MAX,
+    AMP_DECAY_MAX,
+    AMP_RELEASE_MAX,
 )
 from .filters import LPF_MIN_HZ, LPF_MAX_HZ
 
@@ -16,6 +20,14 @@ CHOICE = "choice"
 
 EFFECT_NAMES = ("chorus", "delay", "reverb", "bitcrush")
 MASTER_GAIN_MAX = 1.2
+
+
+def format_seconds(value):
+    """Milliseconds below one second, seconds otherwise: '6 ms', '1.50 s'."""
+    ms = round(value * 1000.0)
+    if ms < 1000:
+        return "%d ms" % ms
+    return "%.2f s" % value
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -34,6 +46,8 @@ class Param:
     scale: str = "linear"
     tooltip: str = ""
     under: str = ""
+    formatter: Callable | None = None
+    widget: str = "knob"
 
 
 class ParamRegistry:
@@ -147,6 +161,15 @@ def build_registry(engine):
             tooltip="Bit depth and sample-rate reduction."),
     }
 
+    def envelope(pid, label, maximum, tooltip, time=True):
+        return Param(
+            id=pid, label=label, group="Envelope", kind=CONTINUOUS,
+            minimum=AMP_TIME_MIN if time else 0.0, maximum=maximum,
+            scale="log" if time else "linear",
+            formatter=format_seconds if time else None, widget="slider",
+            get=lambda: p[pid], set=getattr(engine, "set_" + pid),
+            tooltip=tooltip)
+
     params = [
         Param(id="osc1_level", label="Level", group="Oscillator 1", kind=CONTINUOUS,
               get=lambda: p["osc1_level"], set=lambda v: engine.set_osc_level(1, v)),
@@ -196,6 +219,16 @@ def build_registry(engine):
         Param(id="master_gain", label="Volume", group="Master", kind=CONTINUOUS,
               maximum=MASTER_GAIN_MAX, get=lambda: p["master_gain"],
               set=engine.set_master_gain),
+    ]
+    params += [
+        envelope("amp_attack", "Attack", AMP_ATTACK_MAX,
+                 "Time for a note to rise to full volume."),
+        envelope("amp_decay", "Decay", AMP_DECAY_MAX,
+                 "Time to fall from full volume to the sustain level."),
+        envelope("amp_sustain", "Sustain", 1.0,
+                 "Volume held while the key is down.", time=False),
+        envelope("amp_release", "Release", AMP_RELEASE_MAX,
+                 "Time for a note to fade out after the key is released."),
     ]
     pingpong = Param(
         id="fx_delay_pingpong", label="Ping-pong", group="Effects", kind=TOGGLE,
