@@ -19,6 +19,11 @@ from .config import (
     DEFAULT_PWM,
     DEFAULT_LPF_MODE,
     DEFAULT_LPF_CUTOFF,
+    DEFAULT_ADSR,
+    AMP_TIME_MIN,
+    AMP_ATTACK_MAX,
+    AMP_DECAY_MAX,
+    AMP_RELEASE_MAX,
 )
 from .filters import LowPass, LPF_MIN_HZ, LPF_MAX_HZ, lpf_coefficients
 from .voice import Voice
@@ -54,9 +59,14 @@ class SynthEngine:
             "lpf_resonance": 0.0,
             "lpf_mode": DEFAULT_LPF_MODE,
             "lpf_coeffs": None,
+            "amp_attack": DEFAULT_ADSR["attack"],
+            "amp_decay": DEFAULT_ADSR["decay"],
+            "amp_sustain": DEFAULT_ADSR["sustain"],
+            "amp_release": DEFAULT_ADSR["release"],
         }
         self._order = 0
         self._update_lpf()
+        self._apply_envelope()
 
     def _refresh_derived(self):
         self.params["mod_index"] = self.params["fm_depth"] * FM_INDEX_MAX
@@ -149,6 +159,29 @@ class SynthEngine:
             self.params["lpf_mode"] = mode
             self._update_lpf(force_reset=True)
             return mode
+
+    def _apply_envelope(self):
+        p = self.params
+        for v in self.voices:
+            v.env.set_shape(p["amp_attack"], p["amp_decay"],
+                            p["amp_sustain"], p["amp_release"])
+
+    def _set_envelope(self, key, value, lo, hi):
+        with self.lock:
+            self.params[key] = min(max(float(value), lo), hi)
+            self._apply_envelope()
+
+    def set_amp_attack(self, seconds):
+        self._set_envelope("amp_attack", seconds, AMP_TIME_MIN, AMP_ATTACK_MAX)
+
+    def set_amp_decay(self, seconds):
+        self._set_envelope("amp_decay", seconds, AMP_TIME_MIN, AMP_DECAY_MAX)
+
+    def set_amp_sustain(self, level):
+        self._set_envelope("amp_sustain", level, 0.0, 1.0)
+
+    def set_amp_release(self, seconds):
+        self._set_envelope("amp_release", seconds, AMP_TIME_MIN, AMP_RELEASE_MAX)
 
     def set_master_gain(self, gain):
         with self.lock:
@@ -261,6 +294,10 @@ class SynthEngine:
                 "lpf_cutoff": self.params["lpf_cutoff"],
                 "lpf_resonance": self.params["lpf_resonance"],
                 "lpf_mode": self.params["lpf_mode"],
+                "amp_attack": self.params["amp_attack"],
+                "amp_decay": self.params["amp_decay"],
+                "amp_sustain": self.params["amp_sustain"],
+                "amp_release": self.params["amp_release"],
                 "chorus_depth": self.effects.chorus.amount,
                 "delay_time": self.effects.delay.time_ms,
                 "delay_pingpong": self.effects.delay.pingpong,

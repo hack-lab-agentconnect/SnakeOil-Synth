@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
 
 from ..params import CHOICE, CONTINUOUS, TOGGLE
 from .knob import Knob
+from .slider import ValueSlider
 
 
 class ParamControl(QFrame):
@@ -42,10 +43,12 @@ class ParamControl(QFrame):
     def _make_editor(self):
         param, registry = self.param, self.registry
         if param.kind == CONTINUOUS:
-            knob = Knob(param.minimum, param.maximum, value=param.get(),
-                        formatter=param.fmt.format, log=(param.scale == "log"))
-            knob.valueChanged.connect(lambda v: registry.set(param.id, v))
-            return knob
+            cls = ValueSlider if param.widget == "slider" else Knob
+            editor = cls(param.minimum, param.maximum, value=param.get(),
+                         formatter=param.formatter or param.fmt.format,
+                         log=(param.scale == "log"))
+            editor.valueChanged.connect(lambda v: registry.set(param.id, v))
+            return editor
         if param.kind == CHOICE:
             combo = QComboBox()
             combo.addItems(param.choices)
@@ -75,7 +78,7 @@ class ParamControl(QFrame):
         self.setProperty("learning", self._learning)
         self.style().unpolish(self)
         self.style().polish(self)
-        if isinstance(self.editor, Knob):
+        if isinstance(self.editor, (Knob, ValueSlider)):
             self.editor.setLearning(on)
         self._update_badge()
 
