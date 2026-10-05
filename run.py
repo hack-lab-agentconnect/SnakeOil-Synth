@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 
 from midi_synth.config import (
-    SAMPLE_RATE, BLOCK_SIZE, MAX_VOICES, WAVEFORMS, HPF_MODES, DEFAULT_HPF_MODE,
+    SAMPLE_RATE, BLOCK_SIZE, MAX_VOICES, WAVEFORMS, LPF_MODES, DEFAULT_LPF_MODE,
 )
 from midi_synth.bindings import default_profile
 from midi_synth.engine import SynthEngine
@@ -37,8 +37,8 @@ def parse_args(argv):
     p.add_argument("--no-asio", action="store_true",
                    help="do not opt in to the bundled ASIO-enabled PortAudio DLL")
     p.add_argument("--channels", type=int, default=2, help="output channels")
-    p.add_argument("--hpf-mode", choices=HPF_MODES, default=DEFAULT_HPF_MODE,
-                   help="high-pass filter placement: per voice, or one on the master bus (fallback if per-voice is too heavy)")
+    p.add_argument("--lpf-mode", choices=LPF_MODES, default=DEFAULT_LPF_MODE,
+                   help="low-pass filter placement: per voice, or one on the master bus (fallback if per-voice is too heavy)")
     p.add_argument("--no-console", action="store_true", help="disable interactive command console")
     p.add_argument("--no-gui", action="store_true", help="run the console only, no window")
     p.add_argument("--profile", default=None, metavar="NAME",
@@ -80,9 +80,9 @@ HELP_TEXT = """commands:
   mod <0-1>                  modulation amount (alias: fm)
   tune2 <-12..12>            osc2 coarse semitones
   cents2 <-0.5..0.5>         osc2 fine cents
-  hpf <20-8000>              high-pass cutoff in Hz (20 = off)
-  hres <0-1>                 high-pass resonance
-  hpfmode <voice|master>     filter placement
+  lpf <20-20000>             low-pass cutoff in Hz (20000 = off)
+  lres <0-1>                 low-pass resonance
+  lpfmode <voice|master>     filter placement
   gain <0-1.2>               master volume
   alloff                     release all held notes
   status                     show current settings
@@ -134,12 +134,12 @@ def console_loop(engine):
                     engine.set_osc1_waveform(wf)
                 else:
                     engine.set_osc2_waveform(wf)
-            elif cmd == "hpf":
-                engine.set_hpf_cutoff(float(parts[1]))
-            elif cmd == "hres":
-                engine.set_hpf_resonance(float(parts[1]))
-            elif cmd == "hpfmode":
-                engine.set_hpf_mode(parts[1].lower())
+            elif cmd == "lpf":
+                engine.set_lpf_cutoff(float(parts[1]))
+            elif cmd == "lres":
+                engine.set_lpf_resonance(float(parts[1]))
+            elif cmd == "lpfmode":
+                engine.set_lpf_mode(parts[1].lower())
             elif cmd == "fx":
                 name = parts[1].lower()
                 action = parts[2].lower() if len(parts) > 2 else "toggle"
@@ -225,7 +225,7 @@ def main(argv=None):
     )
     engine = SynthEngine(sr=samplerate, block_size=args.blocksize,
                          max_voices=args.voices)
-    engine.set_hpf_mode(args.hpf_mode)
+    engine.set_lpf_mode(args.lpf_mode)
 
     store = ProfileStore(Path(args.config_dir) if args.config_dir else default_config_dir())
     try:

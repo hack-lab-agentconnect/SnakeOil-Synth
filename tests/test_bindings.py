@@ -106,7 +106,7 @@ def test_default_profile_matches_legacy_cc_map():
         24: "osc1_waveform", 25: "osc2_waveform",
         26: "detune2_semitones", 27: "detune2_cents",
         28: "osc2_level", 29: "osc1_level", 30: "mod_mode",
-        71: "hpf_resonance", 74: "hpf_cutoff",
+        71: "lpf_resonance", 74: "lpf_cutoff",
     }
     for cc, pid in expected.items():
         assert p.param_for(CC, 9, cc) == pid

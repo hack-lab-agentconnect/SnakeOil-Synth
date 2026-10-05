@@ -109,7 +109,7 @@ def test_log_knob_nudge_is_geometric(qapp):
 
 
 def test_cutoff_control_uses_log_knob_and_tooltip(registry):
-    ctl = ParamControl(registry, registry["hpf_cutoff"])
+    ctl = ParamControl(registry, registry["lpf_cutoff"])
     assert ctl.editor._log is True
-    master = ParamControl(registry, registry["hpf_master"])
+    master = ParamControl(registry, registry["lpf_master"])
     assert master.toolTip() != ""

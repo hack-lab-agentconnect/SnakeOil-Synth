@@ -9,7 +9,7 @@ from .config import (
     CENTS_MIN,
     CENTS_MAX,
 )
-from .filters import HPF_MIN_HZ, HPF_MAX_HZ
+from .filters import LPF_MIN_HZ, LPF_MAX_HZ
 
 CONTINUOUS = "continuous"
 TOGGLE = "toggle"
@@ -147,15 +147,15 @@ def build_registry(engine):
               affects=("fm_depth",)),
         Param(id="fm_depth", label="Amount", group="Modulation", kind=CONTINUOUS,
               get=lambda: p["fm_depth"], set=engine.set_fm_depth),
-        Param(id="hpf_cutoff", label="Cutoff", group="Filter", kind=CONTINUOUS,
-              minimum=HPF_MIN_HZ, maximum=HPF_MAX_HZ, scale="log", fmt="{:.0f} Hz",
-              get=lambda: p["hpf_cutoff"], set=engine.set_hpf_cutoff,
-              tooltip="High-pass cutoff. Fully left = filter off."),
-        Param(id="hpf_resonance", label="Resonance", group="Filter", kind=CONTINUOUS,
-              get=lambda: p["hpf_resonance"], set=engine.set_hpf_resonance),
-        Param(id="hpf_master", label="Master-bus filter", group="Filter", kind=TOGGLE,
-              get=lambda: p["hpf_mode"] == "master",
-              set=lambda v: engine.set_hpf_mode("master" if v else "voice"),
+        Param(id="lpf_cutoff", label="Cutoff", group="Filter", kind=CONTINUOUS,
+              minimum=LPF_MIN_HZ, maximum=LPF_MAX_HZ, scale="log", fmt="{:.0f} Hz",
+              get=lambda: p["lpf_cutoff"], set=engine.set_lpf_cutoff,
+              tooltip="Low-pass cutoff. Fully right = filter off."),
+        Param(id="lpf_resonance", label="Resonance", group="Filter", kind=CONTINUOUS,
+              get=lambda: p["lpf_resonance"], set=engine.set_lpf_resonance),
+        Param(id="lpf_master", label="Master-bus filter", group="Filter", kind=TOGGLE,
+              get=lambda: p["lpf_mode"] == "master",
+              set=lambda v: engine.set_lpf_mode("master" if v else "voice"),
               tooltip="Off: one filter per voice. On: a single filter on the whole mix "
                       "(lighter on the CPU; use it if audio glitches)."),
         Param(id="master_gain", label="Volume", group="Master", kind=CONTINUOUS,

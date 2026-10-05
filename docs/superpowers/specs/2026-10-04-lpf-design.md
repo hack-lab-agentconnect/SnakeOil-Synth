@@ -1,18 +1,18 @@
-# High-Pass Filter with Resonance — Design
+# Low-Pass Filter with Resonance — Design
 
 ## Goal
-Add a classic resonant high-pass filter (12 dB/oct) with cutoff and resonance
+Add a classic resonant low-pass filter (12 dB/oct) with cutoff and resonance
 dials, controllable from the GUI, MIDI learn and profiles like every other
 parameter.
 
 ## Behaviour
-- **Cutoff**: log-scaled 20 Hz - 8 kHz, default 20 Hz = bypass (no CPU, output
+- **Cutoff**: log-scaled 20 Hz - 20 kHz, default 20 kHz = bypass (no CPU, output
   identical to today).
 - **Resonance**: 0-1 mapped exponentially to Q 0.707 - 12.
-- **Filter**: RBJ biquad high-pass, direct form II transposed, coefficients
+- **Filter**: RBJ biquad low-pass, direct form II transposed, coefficients
   recomputed once per render block from the current params.
 - **Placement** (runtime toggle "Master-bus filter" in the GUI, param
-  `hpf_master`; CLI `--hpf-mode voice|master` sets the initial value):
+  `lpf_master`; CLI `--lpf-mode voice|master` sets the initial value):
   - `voice` (default): one filter per voice, after the oscillator mix and before
     the amplitude envelope. State resets on each note-on.
   - `master`: one filter on the summed voices, before the effect chain. This is
@@ -25,5 +25,5 @@ parameter.
   toggle). Knob supports log scaling. Master moves to the top row.
 
 ## Non-goals
-Low-pass/band-pass, filter envelope, key tracking, cutoff smoothing between
+Other filter types, filter envelope, key tracking, cutoff smoothing between
 blocks.

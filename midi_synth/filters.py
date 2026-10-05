@@ -2,8 +2,8 @@ import math
 
 import numpy as np
 
-HPF_MIN_HZ = 20.0
-HPF_MAX_HZ = 8000.0
+LPF_MIN_HZ = 20.0
+LPF_MAX_HZ = 20000.0
 Q_MIN = 0.707
 Q_MAX = 12.0
 
@@ -13,18 +13,18 @@ def resonance_to_q(resonance):
     return Q_MIN * (Q_MAX / Q_MIN) ** r
 
 
-def hpf_coefficients(cutoff, resonance, sr):
-    """RBJ high-pass biquad, normalised: (b0, b1, b2, a1, a2)."""
-    cutoff = min(max(float(cutoff), HPF_MIN_HZ), 0.45 * sr)
+def lpf_coefficients(cutoff, resonance, sr):
+    """RBJ low-pass biquad, normalised: (b0, b1, b2, a1, a2)."""
+    cutoff = min(max(float(cutoff), LPF_MIN_HZ), 0.45 * sr)
     w0 = 2.0 * math.pi * cutoff / sr
     cos_w0 = math.cos(w0)
     alpha = math.sin(w0) / (2.0 * resonance_to_q(resonance))
     a0 = 1.0 + alpha
-    b0 = (1.0 + cos_w0) / 2.0 / a0
-    return (b0, -2.0 * b0, b0, -2.0 * cos_w0 / a0, (1.0 - alpha) / a0)
+    b0 = (1.0 - cos_w0) / 2.0 / a0
+    return (b0, 2.0 * b0, b0, -2.0 * cos_w0 / a0, (1.0 - alpha) / a0)
 
 
-class HighPass:
+class LowPass:
     """Biquad filter (direct form II transposed) that keeps state across blocks."""
 
     def __init__(self, sr):

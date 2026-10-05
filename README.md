@@ -14,7 +14,7 @@ toggleable effects chain.
 - **Second oscillator is phase-modulated (FM) by the first oscillator's output.**
 - Second oscillator **coarse tuning −12..+12 semitones** plus **fine tuning ±0.5 cents**.
 - Toggleable effects: **Chorus, Delay, Reverb, Bitcrush**.
-- Resonant 12 dB/oct **high-pass filter** (cutoff + resonance), per voice or on the master bus.
+- Resonant 12 dB/oct **low-pass filter** (cutoff + resonance), per voice or on the master bus.
 - Pitch-bend and velocity support; per-voice ADSR envelope.
 
 ## Install
@@ -39,10 +39,10 @@ sudo apt install libportaudio2
 python run.py --list            # list MIDI inputs, host APIs and audio outputs
 python run.py                   # listen on all MIDI ports, auto-pick the lowest-latency output
 python run.py --input "Launchkey" --channel 1
-python run.py --hpf-mode master # one high-pass filter on the whole mix instead of one per voice
+python run.py --lpf-mode master # one low-pass filter on the whole mix instead of one per voice
 ```
 
-`--hpf-mode voice|master` picks where the high-pass filter sits. `voice` (default)
+`--lpf-mode voice|master` picks where the low-pass filter sits. `voice` (default)
 filters each note separately; `master` is lighter on the CPU if audio glitches.
 
 `--channel` takes 1-16 (the channel filter is one-based).
@@ -103,9 +103,9 @@ mode <off|fm|am|ring|sync>  # how osc1 modulates osc2
 mod <0-1>           # modulation amount (alias: fm)
 tune2 <-12..12>     # oscillator-2 coarse semitones
 cents2 <-0.5..0.5>  # oscillator-2 fine cents
-hpf <20-8000>       # high-pass cutoff in Hz (20 = off)
-hres <0-1>          # high-pass resonance
-hpfmode <voice|master>  # filter placement
+lpf <20-20000>      # low-pass cutoff in Hz (20000 = off)
+lres <0-1>          # low-pass resonance
+lpfmode <voice|master>  # filter placement
 gain <0-1.2>
 alloff | status | quit
 ```
@@ -147,12 +147,12 @@ This is the seeded `Default` profile; it is now editable via MIDI learn.
 | CC 28 | osc 2 level (0..1) |
 | CC 29 | osc 1 level (0..1) |
 | CC 30 | modulation mode (zones: off / fm / am / ring / sync) |
-| CC 71 | high-pass resonance |
-| CC 74 | high-pass cutoff (log scale) |
+| CC 71 | low-pass resonance |
+| CC 74 | low-pass cutoff (log scale) |
 | Pitch wheel | pitch bend (±2 semitones) |
 
 Toggle CCs act on press (value ≥ 64) with edge detection. Profiles saved before the
-high-pass filter was added do not have CC 71 and CC 74; use the toolbar's Reset to get them.
+low-pass filter was added do not have CC 71 and CC 74; use the toolbar's Reset to get them.
 
 ## Signal flow
 

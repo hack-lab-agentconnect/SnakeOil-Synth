@@ -120,8 +120,8 @@ _DEFAULT_CCS = (
     (28, "osc2_level"),
     (29, "osc1_level"),
     (30, "mod_mode"),
-    (71, "hpf_resonance"),
-    (74, "hpf_cutoff"),
+    (71, "lpf_resonance"),
+    (74, "lpf_cutoff"),
 )
 
 
