@@ -2,13 +2,13 @@ from dataclasses import dataclass
 from typing import Any, Callable, Tuple
 
 from .config import (
-    WAVEFORMS,
     MODES,
     SEMITONE_MIN,
     SEMITONE_MAX,
     CENTS_MIN,
     CENTS_MAX,
 )
+from .filters import LPF_MIN_HZ, LPF_MAX_HZ
 
 CONTINUOUS = "continuous"
 TOGGLE = "toggle"
@@ -31,6 +31,9 @@ class Param:
     choices: Tuple[str, ...] = ()
     fmt: str = "{:.2f}"
     affects: Tuple[str, ...] = ()
+    scale: str = "linear"
+    tooltip: str = ""
+    under: str = ""
 
 
 class ParamRegistry:
@@ -80,7 +83,10 @@ class ParamRegistry:
         param = self._params[param_id]
         value = int(value)
         if param.kind == CONTINUOUS:
-            return param.minimum + (param.maximum - param.minimum) * min(max(value, 0), 127) / 127.0
+            frac = min(max(value, 0), 127) / 127.0
+            if param.scale == "log":
+                return param.minimum * (param.maximum / param.minimum) ** frac
+            return param.minimum + (param.maximum - param.minimum) * frac
         if param.kind == TOGGLE:
             return value >= 64
         idx = min(max(value, 0) * len(param.choices) // 128, len(param.choices) - 1)
@@ -117,15 +123,43 @@ def build_registry(engine):
             set=lambda v: engine.set_effect(name, v),
         )
 
+    fx = engine.effects
+    dials = {
+        "chorus": Param(
+            id="fx_chorus_depth", label="Depth", group="Effects", kind=CONTINUOUS,
+            minimum=0.0, maximum=1.0, fmt="{:.2f}", under="fx_chorus",
+            get=lambda: fx.chorus.amount, set=engine.set_chorus_depth,
+            tooltip="How far the chorus delay swings. Low = subtle "
+                    "thickening, high = obvious wobble."),
+        "delay": Param(
+            id="fx_delay_time", label="Time", group="Effects", kind=CONTINUOUS,
+            minimum=200.0, maximum=4000.0, scale="log", fmt="{:.0f} ms",
+            under="fx_delay", get=lambda: fx.delay.time_ms,
+            set=engine.set_delay_time, tooltip="Delay time between echoes."),
+        "reverb": Param(
+            id="fx_reverb_amount", label="Amount", group="Effects",
+            kind=CONTINUOUS, under="fx_reverb", get=lambda: fx.reverb.mix,
+            set=engine.set_reverb_amount, tooltip="Reverb wet level."),
+        "bitcrush": Param(
+            id="fx_bitcrush_amount", label="Crush", group="Effects",
+            kind=CONTINUOUS, under="fx_bitcrush",
+            get=lambda: fx.bitcrush.amount, set=engine.set_crush_amount,
+            tooltip="Bit depth and sample-rate reduction."),
+    }
+
     params = [
-        Param(id="osc1_waveform", label="Waveform", group="Oscillator 1", kind=CHOICE,
-              choices=WAVEFORMS, get=lambda: p["osc1_waveform"],
-              set=engine.set_osc1_waveform),
         Param(id="osc1_level", label="Level", group="Oscillator 1", kind=CONTINUOUS,
               get=lambda: p["osc1_level"], set=lambda v: engine.set_osc_level(1, v)),
-        Param(id="osc2_waveform", label="Waveform", group="Oscillator 2", kind=CHOICE,
-              choices=WAVEFORMS, get=lambda: p["osc2_waveform"],
-              set=engine.set_osc2_waveform),
+        Param(id="osc1_square", label="Square layer", group="Oscillator 1", kind=TOGGLE,
+              get=lambda: p["osc1_square"], set=engine.set_osc1_square,
+              tooltip="Layer a square wave over the saw."),
+        Param(id="osc1_pwm", label="PWM", group="Oscillator 1", kind=CONTINUOUS,
+              minimum=0.0, maximum=0.5, fmt="{:.2f}",
+              get=lambda: p["osc1_pwm"], set=engine.set_osc1_pwm,
+              tooltip="Pulse width of the square layer. 0.50 = plain square."),
+        Param(id="osc1_octave", label="Octave down", group="Oscillator 1", kind=TOGGLE,
+              get=lambda: p["osc1_octave_down"], set=engine.set_osc1_octave_down,
+              tooltip="Play Oscillator 1 one octave below the note."),
         Param(id="osc2_level", label="Level", group="Oscillator 2", kind=CONTINUOUS,
               get=lambda: p["osc2_level"], set=lambda v: engine.set_osc_level(2, v)),
         Param(id="detune2_semitones", label="Coarse", group="Oscillator 2",
@@ -136,13 +170,41 @@ def build_registry(engine):
               kind=CONTINUOUS, minimum=CENTS_MIN, maximum=CENTS_MAX,
               fmt="{:+.2f} ct", get=lambda: p["detune2_cents"],
               set=lambda v: engine.set_detune2(p["detune2_semitones"], v)),
+        Param(id="osc2_pwm", label="PWM", group="Oscillator 2", kind=CONTINUOUS,
+              minimum=0.0, maximum=0.5, fmt="{:.2f}",
+              get=lambda: p["osc2_pwm"], set=engine.set_osc2_pwm,
+              tooltip="Pulse width of the square. 0.50 = plain square."),
+        Param(id="osc2_octave", label="Octave up", group="Oscillator 2", kind=TOGGLE,
+              get=lambda: p["osc2_octave_up"], set=engine.set_osc2_octave_up,
+              tooltip="Play Oscillator 2 one octave above the note."),
         Param(id="mod_mode", label="Mode", group="Modulation", kind=CHOICE,
               choices=MODES, get=lambda: p["mod_mode"], set=engine.set_mod_mode,
               affects=("fm_depth",)),
         Param(id="fm_depth", label="Amount", group="Modulation", kind=CONTINUOUS,
               get=lambda: p["fm_depth"], set=engine.set_fm_depth),
+        Param(id="lpf_cutoff", label="Cutoff", group="Filter", kind=CONTINUOUS,
+              minimum=LPF_MIN_HZ, maximum=LPF_MAX_HZ, scale="log", fmt="{:.0f} Hz",
+              get=lambda: p["lpf_cutoff"], set=engine.set_lpf_cutoff,
+              tooltip="Low-pass cutoff. Fully right = filter off."),
+        Param(id="lpf_resonance", label="Resonance", group="Filter", kind=CONTINUOUS,
+              get=lambda: p["lpf_resonance"], set=engine.set_lpf_resonance),
+        Param(id="lpf_master", label="Master-bus filter", group="Filter", kind=TOGGLE,
+              get=lambda: p["lpf_mode"] == "master",
+              set=lambda v: engine.set_lpf_mode("master" if v else "voice"),
+              tooltip="Off: one filter per voice. On: a single filter on the whole mix "
+                      "(lighter on the CPU; use it if audio glitches)."),
         Param(id="master_gain", label="Volume", group="Master", kind=CONTINUOUS,
               maximum=MASTER_GAIN_MAX, get=lambda: p["master_gain"],
               set=engine.set_master_gain),
-    ] + [effect(n) for n in EFFECT_NAMES]
+    ]
+    pingpong = Param(
+        id="fx_delay_pingpong", label="Ping-pong", group="Effects", kind=TOGGLE,
+        under="fx_delay_time", get=lambda: fx.delay.pingpong,
+        set=engine.set_delay_pingpong,
+        tooltip="Bounce the echoes between the left and right speakers.")
+    for n in EFFECT_NAMES:
+        params.append(effect(n))
+        params.append(dials[n])
+        if n == "delay":
+            params.append(pingpong)
     return ParamRegistry(params)

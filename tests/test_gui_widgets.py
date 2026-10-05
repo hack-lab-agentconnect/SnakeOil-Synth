@@ -52,13 +52,13 @@ def test_continuous_control_writes_registry(registry):
 
 
 def test_choice_control_writes_and_refreshes(registry):
-    ctl = ParamControl(registry, registry["osc1_waveform"])
+    ctl = ParamControl(registry, registry["mod_mode"])
     assert isinstance(ctl.editor, QComboBox)
-    registry.set("osc1_waveform", "saw")
+    registry.set("mod_mode", "am")
     ctl.refresh()
-    assert ctl.editor.currentText() == "saw"
-    ctl.editor.textActivated.emit("square")
-    assert registry.get("osc1_waveform") == "square"
+    assert ctl.editor.currentText() == "am"
+    ctl.editor.textActivated.emit("ring")
+    assert registry.get("mod_mode") == "ring"
 
 
 def test_toggle_control(registry):
@@ -99,3 +99,17 @@ def test_learn_mode_click_requests_learn(registry):
     ctl.mousePressEvent(QMouseEvent(
         QEvent.MouseButtonPress, pos, pos, Qt.LeftButton, Qt.LeftButton, Qt.NoModifier))
     assert asked == ["fm_depth"]
+
+
+def test_log_knob_nudge_is_geometric(qapp):
+    knob = Knob(20.0, 8000.0, value=20.0, log=True)
+    knob.nudge(0.5)
+    assert knob.value() == pytest.approx(400.0, rel=1e-6)
+    assert knob.fraction() == pytest.approx(0.5)
+
+
+def test_cutoff_control_uses_log_knob_and_tooltip(registry):
+    ctl = ParamControl(registry, registry["lpf_cutoff"])
+    assert ctl.editor._log is True
+    master = ParamControl(registry, registry["lpf_master"])
+    assert master.toolTip() != ""

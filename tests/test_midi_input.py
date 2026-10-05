@@ -61,12 +61,18 @@ def test_channel_filter_is_one_based():
     assert engine.active_note_count() == 1
 
 
-def test_pitchwheel_and_program_change(rig):
+def test_pitchwheel_bends_pitch(rig):
     engine, midi = rig
     midi._on_message(mido.Message("pitchwheel", pitch=8191))
     assert engine.params["pitch_bend"] > 1.9
+
+
+def test_program_change_is_ignored(rig, capsys):
+    engine, midi = rig
+    before = dict(engine.params)
     midi._on_message(mido.Message("program_change", program=64))
-    assert engine.params["osc1_waveform"] == "triangle"
+    assert engine.params == before
+    assert capsys.readouterr().err == ""
 
 
 def test_note_off_after_rebinding_does_not_stick(rig):

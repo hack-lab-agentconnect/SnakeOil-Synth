@@ -1,6 +1,6 @@
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
-    QComboBox, QGridLayout, QGroupBox, QHBoxLayout, QInputDialog, QLabel,
+    QComboBox, QGridLayout, QGroupBox, QInputDialog, QLabel,
     QMainWindow, QMessageBox, QPushButton, QToolBar, QWidget,
 )
 
@@ -12,7 +12,8 @@ GROUP_POSITIONS = {
     "Oscillator 1": (0, 0, 1, 1),
     "Oscillator 2": (0, 1, 1, 1),
     "Modulation": (0, 2, 1, 1),
-    "Effects": (1, 0, 1, 2),
+    "Effects": (1, 0, 1, 1),
+    "Filter": (1, 1, 1, 1),
     "Master": (1, 2, 1, 1),
 }
 
@@ -71,16 +72,24 @@ class MainWindow(QMainWindow):
 
     def _build_body(self):
         groups = {}
+        columns = {}
         for param in self.registry:
             box = groups.get(param.group)
             if box is None:
                 box = QGroupBox(param.group)
-                box.setLayout(QHBoxLayout())
+                box.setLayout(QGridLayout())
                 groups[param.group] = box
             control = ParamControl(self.registry, param)
             control.learnRequested.connect(self._on_learn_requested)
             control.clearRequested.connect(self._on_clear_requested)
-            box.layout().addWidget(control)
+            cells = columns.setdefault(param.group, {})
+            if param.under:
+                row, col = cells[param.under]
+                row += 1
+            else:
+                row, col = 0, sum(1 for r, _ in cells.values() if r == 0)
+            cells[param.id] = (row, col)
+            box.layout().addWidget(control, row, col)
             self.controls[param.id] = control
         grid = QGridLayout()
         for index, (name, box) in enumerate(groups.items()):

@@ -21,6 +21,8 @@ class ParamControl(QFrame):
         self._learning = False
         self._binding = None
         self.setObjectName("control")
+        if param.tooltip:
+            self.setToolTip(param.tooltip)
 
         self.title = QLabel(param.label)
         self.title.setAlignment(Qt.AlignHCenter)
@@ -41,7 +43,7 @@ class ParamControl(QFrame):
         param, registry = self.param, self.registry
         if param.kind == CONTINUOUS:
             knob = Knob(param.minimum, param.maximum, value=param.get(),
-                        formatter=param.fmt.format)
+                        formatter=param.fmt.format, log=(param.scale == "log"))
             knob.valueChanged.connect(lambda v: registry.set(param.id, v))
             return knob
         if param.kind == CHOICE:

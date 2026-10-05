@@ -2,7 +2,10 @@ SAMPLE_RATE = 44100
 BLOCK_SIZE = 256
 MAX_VOICES = 12
 
-WAVEFORMS = ("sine", "square", "saw", "triangle")
+MIN_DUTY = 0.02
+DEFAULT_DUTY = 0.5
+DEFAULT_PWM = 0.0
+LAYER_GAIN = 0.6
 
 MODES = ("off", "fm", "am", "ring", "sync")
 DEFAULT_MODE = "fm"
@@ -12,6 +15,10 @@ SEMITONE_MIN = -12.0
 SEMITONE_MAX = 12.0
 CENTS_MIN = -0.5
 CENTS_MAX = 0.5
+
+LPF_MODES = ("voice", "master")
+DEFAULT_LPF_MODE = "voice"
+DEFAULT_LPF_CUTOFF = 2000.0
 
 FM_INDEX_MAX = 8.0
 PITCH_BEND_RANGE = 2.0

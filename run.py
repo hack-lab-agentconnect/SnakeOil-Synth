@@ -3,7 +3,9 @@ import sys
 import time
 from pathlib import Path
 
-from midi_synth.config import SAMPLE_RATE, BLOCK_SIZE, MAX_VOICES, WAVEFORMS
+from midi_synth.config import (
+    SAMPLE_RATE, BLOCK_SIZE, MAX_VOICES, LPF_MODES, DEFAULT_LPF_MODE,
+)
 from midi_synth.bindings import default_profile
 from midi_synth.engine import SynthEngine
 from midi_synth.midi_input import MidiInput
@@ -35,6 +37,8 @@ def parse_args(argv):
     p.add_argument("--no-asio", action="store_true",
                    help="do not opt in to the bundled ASIO-enabled PortAudio DLL")
     p.add_argument("--channels", type=int, default=2, help="output channels")
+    p.add_argument("--lpf-mode", choices=LPF_MODES, default=DEFAULT_LPF_MODE,
+                   help="low-pass filter placement: per voice, or one on the master bus (fallback if per-voice is too heavy)")
     p.add_argument("--no-console", action="store_true", help="disable interactive command console")
     p.add_argument("--no-gui", action="store_true", help="run the console only, no window")
     p.add_argument("--profile", default=None, metavar="NAME",
@@ -42,6 +46,50 @@ def parse_args(argv):
     p.add_argument("--config-dir", default=None, metavar="PATH",
                    help="where profiles are stored (default: per-user config dir)")
     return p.parse_args(argv)
+
+
+def copy_block_to_output(outdata, block):
+    """Write a stereo (frames, 2) block into outdata of any channel count.
+
+    Two or more channels get left and right in the first two and silence in
+    the rest; a single channel gets the mean of left and right.
+    """
+    channels = outdata.shape[1]
+    if channels >= 2:
+        outdata[:, :2] = block
+        outdata[:, 2:] = 0.0
+    else:
+        outdata[:, 0] = block.mean(axis=1)
+
+
+class CallbackState:
+    """Remembers whether the audio callback has already reported an error."""
+
+    def __init__(self):
+        self.reported = False
+
+
+def render_into(outdata, engine, frames, state):
+    """Render a block into outdata; on any error output silence and report it once."""
+    try:
+        copy_block_to_output(outdata, engine.render(frames))
+    except Exception as exc:
+        outdata.fill(0)
+        if not state.reported:
+            state.reported = True
+            print("Audio render error (output muted while it persists): %r" % (exc,))
+
+
+def parse_on_off(text, allow_toggle=False):
+    """Return True/False for on/off (case-insensitive), 'toggle' if allowed, else None."""
+    word = text.strip().lower() if isinstance(text, str) else ""
+    if word == "on":
+        return True
+    if word == "off":
+        return False
+    if allow_toggle and word == "toggle":
+        return "toggle"
+    return None
 
 
 def list_devices():
@@ -70,12 +118,23 @@ def list_devices():
 
 HELP_TEXT = """commands:
   fx <chorus|delay|reverb|bitcrush> <on|off|toggle>
-  wave1/wave2 <sine|square|saw|triangle>
+  chorusdepth <0-1>          chorus depth (default 0.3)
+  delaytime <200-4000>       delay time in ms
+  pingpong <on|off>          bounce delay echoes between left and right
+  reverbamt <0-1>            reverb wet amount
+  crush <0-1>                bitcrush amount (bit depth and downsampling)
+  square <on|off>            osc 1 square layer over the saw
+  pwm1/pwm2 <0-0.5>          pulse width (osc 1 square layer / osc 2); 0.5 = square
   level1/level2 <0-1>        oscillator mix level (osc2 starts at 0)
   mode <off|fm|am|ring|sync> how osc1 modulates osc2
   mod <0-1>                  modulation amount (alias: fm)
   tune2 <-12..12>            osc2 coarse semitones
   cents2 <-0.5..0.5>         osc2 fine cents
+  oct1 <on|off>              osc 1 one octave down
+  oct2 <on|off>              osc 2 one octave up
+  lpf <20-20000>             low-pass cutoff in Hz (20000 = off)
+  lres <0-1>                 low-pass resonance
+  lpfmode <voice|master>     filter placement
   gain <0-1.2>               master volume
   alloff                     release all held notes
   status                     show current settings
@@ -119,21 +178,45 @@ def console_loop(engine):
                 engine.set_detune2(engine.params["detune2_semitones"], float(parts[1]))
             elif cmd == "gain":
                 engine.set_master_gain(float(parts[1]))
-            elif cmd in ("wave1", "wave2"):
-                wf = parts[1].lower()
-                if wf not in WAVEFORMS:
-                    print("unknown waveform")
-                elif cmd == "wave1":
-                    engine.set_osc1_waveform(wf)
+            elif cmd == "chorusdepth":
+                engine.set_chorus_depth(float(parts[1]))
+            elif cmd == "delaytime":
+                engine.set_delay_time(min(max(float(parts[1]), 200.0), 4000.0))
+            elif cmd in ("pingpong", "square", "oct1", "oct2"):
+                on = parse_on_off(parts[1]) if len(parts) > 1 else None
+                if on is None:
+                    print("usage: %s <on|off>" % cmd)
+                elif cmd == "pingpong":
+                    engine.set_delay_pingpong(on)
+                elif cmd == "square":
+                    engine.set_osc1_square(on)
+                elif cmd == "oct1":
+                    engine.set_osc1_octave_down(on)
                 else:
-                    engine.set_osc2_waveform(wf)
+                    engine.set_osc2_octave_up(on)
+            elif cmd == "reverbamt":
+                engine.set_reverb_amount(float(parts[1]))
+            elif cmd == "crush":
+                engine.set_crush_amount(float(parts[1]))
+            elif cmd == "pwm1":
+                engine.set_osc1_pwm(float(parts[1]))
+            elif cmd == "pwm2":
+                engine.set_osc2_pwm(float(parts[1]))
+            elif cmd == "lpf":
+                engine.set_lpf_cutoff(float(parts[1]))
+            elif cmd == "lres":
+                engine.set_lpf_resonance(float(parts[1]))
+            elif cmd == "lpfmode":
+                engine.set_lpf_mode(parts[1].lower())
             elif cmd == "fx":
                 name = parts[1].lower()
-                action = parts[2].lower() if len(parts) > 2 else "toggle"
-                if action == "toggle":
+                action = parse_on_off(parts[2], allow_toggle=True) if len(parts) > 2 else "toggle"
+                if action is None:
+                    print("usage: fx <chorus|delay|reverb|bitcrush> <on|off|toggle>")
+                elif action == "toggle":
                     engine.toggle_effect(name)
                 else:
-                    engine.set_effect(name, action == "on")
+                    engine.set_effect(name, action)
             else:
                 print("unknown command")
         except (IndexError, ValueError):
@@ -212,6 +295,7 @@ def main(argv=None):
     )
     engine = SynthEngine(sr=samplerate, block_size=args.blocksize,
                          max_voices=args.voices)
+    engine.set_lpf_mode(args.lpf_mode)
 
     store = ProfileStore(Path(args.config_dir) if args.config_dir else default_config_dir())
     try:
@@ -235,12 +319,10 @@ def main(argv=None):
         print("MIDI unavailable (%s); running without MIDI input" % exc)
 
     stream = None
+    cb_state = CallbackState()
 
     def callback(outdata, frames, time_info, status):
-        block = engine.render(frames)
-        ch = outdata.shape[1]
-        for c in range(ch):
-            outdata[:, c] = block
+        render_into(outdata, engine, frames, cb_state)
 
     try:
         stream, choice = open_output_stream(sd, choice, args, samplerate, callback)

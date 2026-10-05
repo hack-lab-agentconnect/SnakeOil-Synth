@@ -10,10 +10,23 @@ toggleable effects chain.
 
 - MIDI input from **all connected input ports** (or a named port / single channel).
 - Polyphony up to **12 simultaneous notes**.
-- Waveforms: **sine, square, saw, triangle** (square/saw are band-limited with PolyBLEP).
+- Oscillators (band-limited with PolyBLEP): **osc 1 is a saw** with a **square layer** (on by default, can be switched off); **osc 2 is a square**. Both squares have **PWM** (pulse width 0-0.5, where 0.5 is a plain square). PWM defaults to 0, the narrowest pulse the engine allows (a duty of 0.02).
 - **Second oscillator is phase-modulated (FM) by the first oscillator's output.**
 - Second oscillator **coarse tuning −12..+12 semitones** plus **fine tuning ±0.5 cents**.
-- Toggleable effects: **Chorus, Delay, Reverb, Bitcrush**.
+- **Octave switches:** osc 1 can play one octave down, osc 2 one octave up (relative to the played note, on top of its tuning). Osc 2's octave-up switch is on by default.
+- Toggleable effects: **Chorus, Delay, Reverb, Bitcrush**. In the GUI each has a
+  dial under its button: chorus **Depth** (how far the delay swings; the LFO rate is fixed
+  at 0.5 Hz), delay **Time** (200-4000 ms, log scale) with a **Ping-pong** button below it,
+  reverb **Amount** (wet
+  level) and bitcrush **Crush** (bit depth and downsampling together). The dials
+  have no default MIDI CC; use MIDI Learn to bind them.
+- **Stereo output.** Voices and the filter are mono; the effect chain is stereo. Chorus
+  runs a left and a right delay line with opposite LFO phase, reverb uses a second comb/allpass
+  bank offset by 23 samples for the right channel, delay keeps a buffer per channel, and the
+  bitcrusher works per channel. The **Ping-pong** button (console: `pingpong on`) bounces the
+  echoes between the left and right speakers. With all effects off both channels are identical.
+  On a 1-channel device the output is the mean of left and right; channels beyond 2 are silent.
+- Resonant 12 dB/oct **low-pass filter** (cutoff + resonance), per voice or on the master bus. The filter is on by default at **2000 Hz**; turning the cutoff fully right (20 kHz) bypasses it.
 - Pitch-bend and velocity support; per-voice ADSR envelope.
 
 ## Install
@@ -38,7 +51,11 @@ sudo apt install libportaudio2
 python run.py --list            # list MIDI inputs, host APIs and audio outputs
 python run.py                   # listen on all MIDI ports, auto-pick the lowest-latency output
 python run.py --input "Launchkey" --channel 1
+python run.py --lpf-mode master # one low-pass filter on the whole mix instead of one per voice
 ```
+
+`--lpf-mode voice|master` picks where the low-pass filter sits. `voice` (default)
+filters each note separately; `master` is lighter on the CPU if audio glitches.
 
 `--channel` takes 1-16 (the channel filter is one-based).
 
@@ -92,12 +109,24 @@ An interactive console starts alongside the audio. Type `help`. Commands:
 
 ```
 fx <chorus|delay|reverb|bitcrush> <on|off|toggle>
-wave1/wave2 <sine|square|saw|triangle>
+chorusdepth <0-1>   # chorus depth (default 0.3; LFO rate fixed at 0.5 Hz)
+delaytime <200-4000>  # delay time in ms (default 300)
+pingpong <on|off>   # bounce delay echoes between left and right (default off)
+reverbamt <0-1>     # reverb wet amount (default 0.3)
+crush <0-1>         # bitcrush amount: bit depth and downsampling (default 0.5)
+square <on|off>     # oscillator 1 square layer over the saw (default on)
+pwm1 <0-0.5>        # oscillator 1 square-layer pulse width (default 0; 0.5 = plain square)
+pwm2 <0-0.5>        # oscillator 2 pulse width (default 0; 0.5 = plain square)
 level1/level2 <0-1>  # oscillator mix level (osc2 starts at 0)
 mode <off|fm|am|ring|sync>  # how osc1 modulates osc2
 mod <0-1>           # modulation amount (alias: fm)
 tune2 <-12..12>     # oscillator-2 coarse semitones
 cents2 <-0.5..0.5>  # oscillator-2 fine cents
+oct1 <on|off>       # oscillator 1 one octave down
+oct2 <on|off>       # oscillator 2 one octave up (default on)
+lpf <20-20000>      # low-pass cutoff in Hz (default 2000; 20000 = off)
+lres <0-1>          # low-pass resonance
+lpfmode <voice|master>  # filter placement
 gain <0-1.2>
 alloff | status | quit
 ```
@@ -132,30 +161,51 @@ This is the seeded `Default` profile; it is now editable via MIDI learn.
 | CC 21 | toggle Delay |
 | CC 22 | toggle Reverb |
 | CC 23 | toggle Bitcrush |
-| CC 24 | osc 1 waveform (0-31 sine, 32-63 square, 64-95 saw, 96-127 triangle) |
-| CC 25 | osc 2 waveform (same zones) |
 | CC 26 | osc 2 coarse tune (−12..+12 semitones) |
 | CC 27 | osc 2 fine tune (−0.5..+0.5 cents) |
 | CC 28 | osc 2 level (0..1) |
 | CC 29 | osc 1 level (0..1) |
 | CC 30 | modulation mode (zones: off / fm / am / ring / sync) |
+| CC 71 | low-pass resonance |
+| CC 74 | low-pass cutoff (log scale) |
 | Pitch wheel | pitch bend (±2 semitones) |
 
-Toggle CCs act on press (value ≥ 64) with edge detection.
+The square layer and PWM controls have no default CC; assign them with MIDI learn.
+
+Toggle CCs act on press (value ≥ 64) with edge detection. Profiles saved before the
+low-pass filter was added do not have CC 71 and CC 74; use the toolbar's Reset to get them.
 
 ## Signal flow
 
 ```
-note ─▶ ADSR ─▶ osc1 ──┬────────────────────────────▶ Σ ─▶ chorus ─▶ delay ─▶ reverb ─▶ bitcrush ─▶ soft clip ─▶ out
-                       └─(mode: fm/am/ring/sync)─▶ osc2 ─┘
+note ─▶ ADSR ─▶ osc1 ──┬────────────────────────────┐
+                       └─(mode: fm/am/ring/sync)─▶ osc2 ─┴▶ low-pass* ─▶ Σ ─▶ low-pass* ─▶ chorus ─▶ delay ─▶ reverb ─▶ bitcrush ─▶ soft clip ─▶ out
 ```
 
+\* The low-pass filter runs in one of two places: per voice before the sum (the default), or
+once on the master bus after the sum and before the effects (`--lpf-mode master`). The other
+position is bypassed. The oscillators and filter are mono; the effects are stereo.
+
+Everything up to the sum is mono. The mono mix is copied into left and right channels at the
+start of the effect chain; the effects, the volume and the soft clip then run per channel, and
+the engine returns an `(n, 2)` float32 block.
+
 `osc2` pitch = note pitch × 2^((semitones + cents/100)/12).
+
+## Performance
+
+The effects, filter and envelope process whole blocks with numpy / SciPy (`scipy.signal.lfilter`)
+rather than sample by sample. `python bench.py` prints the time per audio block against the
+block budget for 12 voices (defaults, filter placements, each effect, all effects). On the
+development machine (48 kHz, 256-sample blocks) all four effects plus 12 voices use about
+27% of the budget. The optimised code is checked against frozen copies of the original
+implementations in `tests/reference_dsp.py`.
 
 ## Offline render (no audio device)
 
 ```bash
-python render_demo.py --out demo.wav --effects reverb,delay --wave1 saw --mode ring --fm 0.7 --level2 0.6
+python render_demo.py --out demo.wav --effects reverb,delay --pwm1 0.3 --mode ring --fm 0.7 --level2 0.6
 ```
 
-Renders a 12-note chord to a WAV file using only NumPy and the standard library.
+Renders a 12-note chord to a stereo (2-channel, 16-bit, interleaved L/R) WAV file using only
+NumPy and the standard library.

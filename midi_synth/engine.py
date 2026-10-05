@@ -15,7 +15,12 @@ from .config import (
     SEMITONE_MAX,
     CENTS_MIN,
     CENTS_MAX,
+    LPF_MODES,
+    DEFAULT_PWM,
+    DEFAULT_LPF_MODE,
+    DEFAULT_LPF_CUTOFF,
 )
+from .filters import LowPass, LPF_MIN_HZ, LPF_MAX_HZ, lpf_coefficients
 from .voice import Voice
 from .effects import EffectChain
 
@@ -28,43 +33,46 @@ class SynthEngine:
         self.lock = threading.RLock()
         self.voices = [Voice(sr) for _ in range(max_voices)]
         self.effects = EffectChain(sr)
+        self.master_lpf = LowPass(sr)
         self.params = {
-            "osc1_waveform": "sine",
-            "osc2_waveform": "sine",
             "osc1_level": 1.0,
             "osc2_level": 0.0,
+            "osc1_square": True,
+            "osc1_pwm": DEFAULT_PWM,
+            "osc2_pwm": DEFAULT_PWM,
             "mod_mode": DEFAULT_MODE,
             "fm_depth": 0.0,
             "mod_index": 0.0,
             "detune2_semitones": 0.0,
             "detune2_cents": 0.0,
+            "osc1_octave_down": False,
+            "osc2_octave_up": True,
             "pitch_bend": 0.0,
             "pitch_ratio": 1.0,
             "master_gain": 0.8,
+            "lpf_cutoff": DEFAULT_LPF_CUTOFF,
+            "lpf_resonance": 0.0,
+            "lpf_mode": DEFAULT_LPF_MODE,
+            "lpf_coeffs": None,
         }
         self._order = 0
-        self._refresh_oscillators()
-
-    def _refresh_oscillators(self):
-        for v in self.voices:
-            v.osc1.set_waveform(self.params["osc1_waveform"])
-            v.osc2.set_waveform(self.params["osc2_waveform"])
+        self._update_lpf()
 
     def _refresh_derived(self):
         self.params["mod_index"] = self.params["fm_depth"] * FM_INDEX_MAX
         self.params["pitch_ratio"] = 2.0 ** (self.params["pitch_bend"] / 12.0)
 
-    def set_osc1_waveform(self, waveform):
+    def set_osc1_square(self, on):
         with self.lock:
-            self.params["osc1_waveform"] = waveform
-            for v in self.voices:
-                v.osc1.set_waveform(waveform)
+            self.params["osc1_square"] = bool(on)
 
-    def set_osc2_waveform(self, waveform):
+    def set_osc1_pwm(self, duty):
         with self.lock:
-            self.params["osc2_waveform"] = waveform
-            for v in self.voices:
-                v.osc2.set_waveform(waveform)
+            self.params["osc1_pwm"] = min(max(float(duty), 0.0), 0.5)
+
+    def set_osc2_pwm(self, duty):
+        with self.lock:
+            self.params["osc2_pwm"] = min(max(float(duty), 0.0), 0.5)
 
     def set_osc_levels(self, osc1_level, osc2_level):
         with self.lock:
@@ -103,6 +111,44 @@ class SynthEngine:
                 self.params["detune2_cents"] = min(
                     max(cents, CENTS_MIN), CENTS_MAX
                 )
+
+    def set_osc1_octave_down(self, on):
+        with self.lock:
+            self.params["osc1_octave_down"] = bool(on)
+
+    def set_osc2_octave_up(self, on):
+        with self.lock:
+            self.params["osc2_octave_up"] = bool(on)
+
+    def _update_lpf(self, force_reset=False):
+        p = self.params
+        was_bypassed = p["lpf_coeffs"] is None
+        if p["lpf_cutoff"] >= LPF_MAX_HZ / 1.01:
+            p["lpf_coeffs"] = None
+        else:
+            p["lpf_coeffs"] = lpf_coefficients(p["lpf_cutoff"], p["lpf_resonance"], self.sr)
+        if force_reset or was_bypassed != (p["lpf_coeffs"] is None):
+            self.master_lpf.reset()
+            for v in self.voices:
+                v.lpf.reset()
+
+    def set_lpf_cutoff(self, hz):
+        with self.lock:
+            self.params["lpf_cutoff"] = min(max(float(hz), LPF_MIN_HZ), LPF_MAX_HZ)
+            self._update_lpf()
+
+    def set_lpf_resonance(self, resonance):
+        with self.lock:
+            self.params["lpf_resonance"] = min(max(float(resonance), 0.0), 1.0)
+            self._update_lpf()
+
+    def set_lpf_mode(self, mode):
+        if mode not in LPF_MODES:
+            raise ValueError("unknown filter mode: %r (choose from %s)" % (mode, ", ".join(LPF_MODES)))
+        with self.lock:
+            self.params["lpf_mode"] = mode
+            self._update_lpf(force_reset=True)
+            return mode
 
     def set_master_gain(self, gain):
         with self.lock:
@@ -149,6 +195,26 @@ class SynthEngine:
         with self.lock:
             self.effects.get(name).enabled = bool(enabled)
 
+    def set_chorus_depth(self, a):
+        with self.lock:
+            self.effects.chorus.set_depth(a)
+
+    def set_delay_time(self, ms):
+        with self.lock:
+            self.effects.delay.set_time_ms(ms)
+
+    def set_delay_pingpong(self, on):
+        with self.lock:
+            self.effects.delay.set_pingpong(on)
+
+    def set_reverb_amount(self, v):
+        with self.lock:
+            self.effects.reverb.set_amount(v)
+
+    def set_crush_amount(self, a):
+        with self.lock:
+            self.effects.bitcrush.set_amount(a)
+
     def toggle_effect(self, name):
         with self.lock:
             fx = self.effects.get(name)
@@ -164,10 +230,14 @@ class SynthEngine:
             for v in self.voices:
                 if v.active:
                     mix += v.render(n, params)
+            coeffs = params["lpf_coeffs"]
+            if coeffs is not None and params["lpf_mode"] == "master":
+                mix = self.master_lpf.process(mix, coeffs)
+            out = np.vstack([mix, mix])
             if apply_effects:
-                mix = self.effects.process(mix)
-            mix *= params["master_gain"]
-            return np.tanh(mix).astype(np.float32)
+                out = self.effects.process(out)
+            out = np.tanh(out * params["master_gain"])
+            return np.ascontiguousarray(out.T).astype(np.float32)
 
     def status(self):
         with self.lock:
@@ -176,15 +246,26 @@ class SynthEngine:
                 for name in self.effects.order
             }
             return {
-                "osc1_waveform": self.params["osc1_waveform"],
-                "osc2_waveform": self.params["osc2_waveform"],
                 "osc1_level": self.params["osc1_level"],
+                "osc1_square": self.params["osc1_square"],
+                "osc1_pwm": self.params["osc1_pwm"],
                 "osc2_level": self.params["osc2_level"],
+                "osc2_pwm": self.params["osc2_pwm"],
                 "mod_mode": self.params["mod_mode"],
                 "fm_depth": self.params["fm_depth"],
                 "detune2_semitones": self.params["detune2_semitones"],
                 "detune2_cents": self.params["detune2_cents"],
+                "osc1_octave_down": self.params["osc1_octave_down"],
+                "osc2_octave_up": self.params["osc2_octave_up"],
                 "master_gain": self.params["master_gain"],
+                "lpf_cutoff": self.params["lpf_cutoff"],
+                "lpf_resonance": self.params["lpf_resonance"],
+                "lpf_mode": self.params["lpf_mode"],
+                "chorus_depth": self.effects.chorus.amount,
+                "delay_time": self.effects.delay.time_ms,
+                "delay_pingpong": self.effects.delay.pingpong,
+                "reverb_amount": self.effects.reverb.mix,
+                "crush_amount": self.effects.bitcrush.amount,
                 "effects": fx,
                 "active_voices": sum(1 for v in self.voices if v.active),
             }
