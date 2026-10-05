@@ -25,7 +25,7 @@ class Knob(QWidget):
         self._drag_y = None
         self._drag_frac = 0.0
         self._learning = False
-        self.setMinimumSize(72, 88)
+        self.setMinimumSize(64, 80)
         self.setCursor(Qt.SizeVerCursor)
         self.setFocusPolicy(Qt.WheelFocus)
 

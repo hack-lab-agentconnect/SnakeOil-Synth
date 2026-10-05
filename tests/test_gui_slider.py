@@ -31,7 +31,7 @@ def engine_registry(qapp):
 
 def test_linear_endpoints_and_fixed_height(qapp):
     s = ValueSlider(0.0, 1.0, value=0.5)
-    assert s._slider.minimumHeight() == s._slider.maximumHeight() == 120
+    assert s._slider.minimumHeight() == s._slider.maximumHeight() == 96
     s._slider.setValue(0)
     assert s.value() == pytest.approx(0.0)
     s._slider.setValue(1000)
@@ -154,8 +154,8 @@ def test_window_envelope_group(qapp, tmp_path):
     store = ProfileStore(tmp_path / "cfg")
     router = MidiRouter(reg, store.open_active())
     window = MainWindow(engine, reg, router, store, [], Bridge(reg, router))
-    assert GROUP_POSITIONS["Amp Envelope"] == (2, 0, 1, 1)
-    assert GROUP_POSITIONS["Filter Env"] == (2, 1, 1, 1)
+    assert GROUP_POSITIONS["Filter Env"][:2] == (1, 1)
+    assert GROUP_POSITIONS["Amp Envelope"][:2] == (1, 2)
     assert set(window.controls) == set(reg.ids())
     box = next(b for b in window.findChildren(QGroupBox) if b.title() == "Amp Envelope")
     layout = box.layout()

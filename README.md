@@ -8,31 +8,53 @@ toggleable effects chain.
 
 ## Features
 
-- MIDI input from **all connected input ports** (or a named port / single channel).
-- Polyphony up to **12 simultaneous notes**.
-- Oscillators (band-limited with PolyBLEP): **osc 1 is a saw** with a **square layer** (on by default, can be switched off); **osc 2 is a square**. Both squares have **PWM** (pulse width 0-0.5, where 0.5 is a plain square). PWM defaults to 0, the narrowest pulse the engine allows (a duty of 0.02).
-- **Second oscillator is phase-modulated (FM) by the first oscillator's output.**
-- Second oscillator **coarse tuning −12..+12 semitones** plus **fine tuning ±0.5 cents**.
-- **Octave switches:** osc 1 can play one octave down, osc 2 one octave up (relative to the played note, on top of its tuning). Osc 2's octave-up switch is on by default.
-- Toggleable effects: **Chorus, Delay, Reverb, Bitcrush**. In the GUI each has a
-  dial under its button: chorus **Depth** (how far the delay swings; the LFO rate is fixed
-  at 0.5 Hz), delay **Time** (200-4000 ms, log scale), reverb **Amount** (wet
-  level) and bitcrush **Crush** (bit depth and downsampling together). Each effect owns a
-  two-column block in the Effects group: the on/off button spans the top, and its controls
-  flow two per row beneath it. The delay block has **Time**, **Ping-pong**, **Feedback**
-  (0-0.95, how long the echoes repeat) and **Tone** (0-0.9, higher = darker echoes); the
-  reverb block has **Amount**, **Size** (0.5-0.98, how long the tail rings) and **Damping**
-  (0-0.9, higher = darker tail). The defaults (Feedback 0.35, Tone 0.25, Size 0.84,
-  Damping 0.25) match the sound before these dials existed. The dials have no default MIDI
-  CC; use MIDI Learn to bind them, and they are saved in patches.
-- **Stereo output.** Voices and the filter are mono; the effect chain is stereo. Chorus
-  runs a left and a right delay line with opposite LFO phase, reverb uses a second comb/allpass
-  bank offset by 23 samples for the right channel, delay keeps a buffer per channel, and the
-  bitcrusher works per channel. The **Ping-pong** button (console: `pingpong on`) bounces the
-  echoes between the left and right speakers. With all effects off both channels are identical.
-  On a 1-channel device the output is the mean of left and right; channels beyond 2 are silent.
-- Resonant 12 dB/oct **low-pass filter** (cutoff + resonance), per voice or on the master bus. The filter is on by default at **2000 Hz**; turning the cutoff fully right (20 kHz) bypasses it.
-- Pitch-bend and velocity support; per-voice ADSR envelope.
+- **MIDI input** from all connected ports (or a named port / single channel), up to
+  **12 simultaneous notes**, pitch bend, velocity (can be switched off), sustain pedal,
+  channel aftertouch and MIDI clock.
+- **Two oscillators** (band-limited with PolyBLEP): osc 1 is a saw with an optional square
+  layer (on by default); osc 2 is a square. Both squares have **PWM** (0-0.5, 0.5 = plain
+  square; default 0 = narrowest pulse). Osc 2 has **coarse** (-12..+12 semitones) and
+  **fine** (+/-0.5 cents) tuning. **Octave switches:** osc 1 one octave down, osc 2 one
+  octave up (on by default).
+- **Modulation modes** (osc 1 -> osc 2): off, FM (phase modulation), AM, ring and hard sync,
+  with one amount control. See [Modulation modes](#modulation-modes-osc1---osc2).
+- **Resonant 12 dB/oct low-pass filter** (cutoff + resonance, 2000 Hz by default, 20 kHz =
+  bypass), per voice or on the master bus, with a **filter envelope** (ADSR + amount),
+  **key tracking** and **velocity-to-cutoff**.
+- **Amp envelope** (ADSR) per voice.
+- **LFO** (sine, triangle, saw, square, random) to pitch, filter, pulse width or volume,
+  and **glide** (portamento, optionally legato only).
+- **Unison:** up to 12 stacked voices per note with detune and stereo spread.
+- **Stereo effects chain:** chorus, delay (with **ping-pong**, feedback, tone and
+  **tempo sync** to MIDI clock or a manual BPM), reverb (size, damping) and bitcrush.
+- **Patches** (saved sounds), **MIDI-learn profiles**, a **QWERTY keyboard** for playing
+  without a MIDI device, and **WAV recording** of the output.
+- A Qt GUI and an interactive console that expose the same parameters.
+
+## GUI overview
+
+The window is one scrollable body (so it also fits small screens) between two fixed toolbar
+rows and a status bar. The toolbars hold the profile box with New / Duplicate / Rename /
+Delete / Reset, *MIDI Learn*, *QWERTY keys* and *Rec* on the first row, and the patch box
+with Save / Save As / Rename / Delete on the second. The status bar shows the MIDI ports, the
+last MIDI message, active voices, the QWERTY octave and velocity, and the recording time.
+
+The groups sit on a grid:
+
+| | Col 1 | Col 2 | Col 3 | Col 4 | Col 5 |
+|---|---|---|---|---|---|
+| Row 1 | Oscillator 1 | Oscillator 2 | Modulation | Master (volume, velocity) | Tempo |
+| Row 2 | Filter (incl. env amount, key track, velocity) | Filter Env | Amp Envelope | LFO | Glide |
+| Row 3 | Effects (spans columns 1-3) | | | Unison (spans columns 4-5) | |
+
+In *Effects* every toggle (Chorus, Delay, Reverb, Bitcrush) heads a block with its dials in
+a row beneath it: Chorus has Depth; Delay has Time, Ping-pong, Feedback, Tone, Sync and
+Division; Reverb has Amount, Size and Damping; Bitcrush has Crush. Long control names are
+shortened in the window and shown in full as a tooltip.
+
+Feedback (0.35), Tone (0.25), Size (0.84) and Damping (0.25) default to the values the
+effects had before these dials existed. The effect dials have no default MIDI CC; use MIDI
+Learn to bind them. They are saved in patches.
 
 ## Install
 
@@ -141,7 +163,7 @@ A patch is a saved sound: every knob, slider and switch except master volume.
 
 ## Amp envelope (ADSR)
 
-The *Amp Envelope* group at the bottom of the window has four vertical sliders that shape
+The *Amp Envelope* group (row 2 of the window) has four vertical sliders that shape
 the volume of every note:
 
 | Slider | Range | Scale | Default |
@@ -276,39 +298,43 @@ If ASIO is not listed, install your interface's vendor ASIO driver first
 
 An interactive console starts alongside the audio. Type `help`. Commands:
 
-```
-fx <chorus|delay|reverb|bitcrush> <on|off|toggle>
-chorusdepth <0-1>   # chorus depth (default 0.3; LFO rate fixed at 0.5 Hz)
-delaytime <200-4000>  # delay time in ms (default 300)
-pingpong <on|off>   # bounce delay echoes between left and right (default off)
-reverbamt <0-1>     # reverb wet amount (default 0.3)
-rec start [path]    # record the output to a 16-bit stereo WAV (default: recordings/ in the config dir)
-rec stop            # stop recording and save the file
-crush <0-1>         # bitcrush amount: bit depth and downsampling (default 0.5)
-square <on|off>     # oscillator 1 square layer over the saw (default on)
-pwm1 <0-0.5>        # oscillator 1 square-layer pulse width (default 0; 0.5 = plain square)
-pwm2 <0-0.5>        # oscillator 2 pulse width (default 0; 0.5 = plain square)
-level1/level2 <0-1>  # oscillator mix level (osc2 starts at 0)
-mode <off|fm|am|ring|sync>  # how osc1 modulates osc2
-mod <0-1>           # modulation amount (alias: fm)
-tune2 <-12..12>     # oscillator-2 coarse semitones
-cents2 <-0.5..0.5>  # oscillator-2 fine cents
-oct1 <on|off>       # oscillator 1 one octave down
-oct2 <on|off>       # oscillator 2 one octave up (default on)
-lpf <20-20000>      # low-pass cutoff in Hz (default 2000; 20000 = off)
-lres <0-1>          # low-pass resonance
-lpfmode <voice|master>  # filter placement
-adsr <a> <d> <s> <r>  # amp envelope: attack and decay in seconds (0.001-5), sustain 0-1, release in seconds (0.001-10)
-velocity <on|off>   # off = fixed note velocity (default on)
-fltenv <-1..1>      # filter envelope amount (per-voice filter; default 0)
-lfo <rate> <depth> [wave] [dest]  # LFO: 0.05-20 Hz, depth 0-1 (0 = off); wave sine|triangle|saw|square|random; dest pitch|filter|pwm|amp
-glide <seconds>     # slide between notes, 0-2 s (default 0 = off)
-unison <1-12> [detune_cents] [spread]  # stack voices per note (default 1 = off)
-tempo <40-240>      # manual tempo in BPM (default 120)
-delaysync <on|off> [division]  # lock the delay time to the tempo (default off)
-gain <0-1.2>
-alloff | status | quit
-```
+| Command | Action |
+|---|---|
+| `fx <chorus\|delay\|reverb\|bitcrush> <on\|off\|toggle>` | switch an effect |
+| `chorusdepth <0-1>` | chorus depth (default 0.3; LFO rate fixed at 0.5 Hz) |
+| `delaytime <200-4000>` | delay time in ms |
+| `pingpong <on\|off>` | bounce delay echoes between left and right |
+| `reverbamt <0-1>` | reverb wet amount |
+| `crush <0-1>` | bitcrush amount (bit depth and downsampling) |
+| `square <on\|off>` | osc 1 square layer over the saw |
+| `pwm1` / `pwm2 <0-0.5>` | pulse width (osc 1 square layer / osc 2); 0.5 = plain square |
+| `level1` / `level2 <0-1>` | oscillator mix level (osc 2 starts at 0) |
+| `mode <off\|fm\|am\|ring\|sync>` | how osc 1 modulates osc 2 |
+| `mod <0-1>` | modulation amount (alias `fm`) |
+| `tune2 <-12..12>` | osc 2 coarse semitones |
+| `cents2 <-0.5..0.5>` | osc 2 fine cents |
+| `oct1 <on\|off>` | osc 1 one octave down |
+| `oct2 <on\|off>` | osc 2 one octave up (default on) |
+| `lpf <20-20000>` | low-pass cutoff in Hz (20000 = off, default 2000) |
+| `lres <0-1>` | low-pass resonance |
+| `lpfmode <voice\|master>` | filter placement |
+| `adsr <a> <d> <s> <r>` | amp envelope: attack, decay in s (0.001-5), sustain 0-1, release in s (0.001-10) |
+| `velocity <on\|off>` | off = every note plays at one fixed velocity |
+| `fltenv <-1..1>` | filter envelope amount (per-voice filter; default 0) |
+| `lfo <rate> <depth> [wave] [dest]` | LFO 0.05-20 Hz, depth 0-1 (0 = off); wave sine\|triangle\|saw\|square\|random; dest pitch\|filter\|pwm\|amp |
+| `glide <seconds>` | slide between notes, 0-2 s (0 = off) |
+| `unison <1-12> [detune_cents] [spread]` | stack voices per note (polyphony = 12 // width); detune 0-50 cents, spread 0-1 |
+| `tempo <40-240>` | manual tempo in BPM (used when no MIDI clock arrives) |
+| `delaysync <on\|off> [division]` | lock the delay time to the tempo; divisions 1/1 1/2 1/2. 1/4 1/4. 1/4T 1/8 1/8. 1/8T 1/16 1/16. |
+| `gain <0-1.2>` | master volume |
+| `patch list` / `save <name>` / `load <name>` / `delete <name>` | manage sound patches (Init cannot be deleted) |
+| `rec start [path]` / `rec stop` | record the output to a 16-bit stereo WAV (default: `recordings/` in the config dir) |
+| `sustain <on\|off>` | hold the sustain pedal down / up |
+| `panic` | silence everything immediately |
+| `alloff` | release all held notes |
+| `status` | show current settings |
+| `help` | show the command list |
+| `quit` | exit (Ctrl+C also works) |
 
 > To hear the second oscillator, raise its level: `level2 0.5` (it defaults to 0
 > so you get a pure osc-1 tone until you turn it up).
@@ -372,19 +398,29 @@ Polyphonic (per-note) aftertouch is ignored. Console: `sustain on|off` and `pani
 ## Signal flow
 
 ```
-note ─▶ ADSR ─▶ osc1 ──┬────────────────────────────┐
-                       └─(mode: fm/am/ring/sync)─▶ osc2 ─┴▶ low-pass* ─▶ Σ ─▶ low-pass* ─▶ chorus ─▶ delay ─▶ reverb ─▶ bitcrush ─▶ soft clip ─▶ out
+per voice (up to 12, shared with unison):
+  osc1 (saw + square layer) ─────────────────────────────┐
+  osc2 (square) ◀── mode: fm/am/ring/sync ── osc1        ├─▶ mix ─▶ low-pass* ─▶ amp envelope ─▶ pan
+                                                         ┘            ▲
+                                         filter envelope, key tracking, velocity, LFO
+
+all voices ─▶ sum (left/right) ─▶ low-pass* ─▶ chorus ─▶ delay ─▶ reverb ─▶ bitcrush
+           ─▶ master gain ─▶ soft clip (tanh) ─▶ out
 ```
 
-\* The low-pass filter runs in one of two places: per voice before the sum (the default), or
-once on the master bus after the sum and before the effects (`--lpf-mode master`). The other
-position is bypassed. The oscillators and filter are mono; the effects are stereo.
+\* The low-pass filter runs in one of two places: per voice before the amp envelope (the
+default; the only place the filter envelope, key tracking and velocity act), or once on the
+master bus after the sum and before the effects (`--lpf-mode master`).
 
-Everything up to the sum is mono. The mono mix is copied into left and right channels at the
-start of the effect chain; the effects, the volume and the soft clip then run per channel, and
-the engine returns an `(n, 2)` float32 block.
+Modulation sources: the **filter envelope**, **key tracking** and **velocity** move the
+per-voice cutoff; the global **LFO** moves pitch, cutoff, pulse width or volume; **velocity**
+also scales the note level (unless switched off); **glide** shapes pitch between notes. The
+oscillators and per-voice filter are mono. Voices are panned by unison spread; with every
+voice centred the mix is identical in both channels. The effects, master gain and soft clip
+run per channel and the engine returns an `(n, 2)` float32 block. On a 1-channel device the
+output is the mean of left and right; channels beyond 2 are silent.
 
-`osc2` pitch = note pitch × 2^((semitones + cents/100)/12).
+`osc2` pitch = note pitch x 2^((semitones + cents/100)/12).
 
 ## Performance
 

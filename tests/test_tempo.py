@@ -481,8 +481,8 @@ def test_gui_delay_block_layout(tmp_path):
         return layout.getItemPosition(layout.indexOf(window.controls[pid]))[:2]
 
     d = rc("fx_delay")[1]
-    assert rc("fx_delay_sync") == (3, d)
-    assert rc("fx_delay_division") == (3, d + 1)
+    assert rc("fx_delay_sync") == (1, d + 4)
+    assert rc("fx_delay_division") == (1, d + 5)
 
 
 # ---- golden --------------------------------------------------------------

@@ -1,7 +1,9 @@
-from PySide6.QtCore import QEvent, Qt, QTimer
+"""Main window: fixed toolbars and status bar around a scrollable grid of parameter groups."""
+
+from PySide6.QtCore import QEvent, QSize, Qt, QTimer
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QGridLayout, QGroupBox, QInputDialog, QLabel,
-    QMainWindow, QMessageBox, QPushButton, QToolBar, QWidget,
+    QApplication, QComboBox, QFrame, QGridLayout, QGroupBox, QInputDialog, QLabel,
+    QMainWindow, QMessageBox, QPushButton, QScrollArea, QToolBar, QWidget,
 )
 
 from ..bindings import DEFAULT_NAME
@@ -15,18 +17,37 @@ GROUP_POSITIONS = {
     "Oscillator 1": (0, 0, 1, 1),
     "Oscillator 2": (0, 1, 1, 1),
     "Modulation": (0, 2, 1, 1),
-    "Effects": (1, 0, 1, 1),
-    "Filter": (1, 1, 1, 1),
-    "Master": (1, 2, 1, 1),
-    "Amp Envelope": (2, 0, 1, 1),
-    "Filter Env": (2, 1, 1, 1),
-    "LFO": (2, 2, 1, 1),
-    "Glide": (3, 0, 1, 1),
-    "Unison": (3, 1, 1, 1),
-    "Tempo": (3, 2, 1, 1),
+    "Master": (0, 3, 1, 1),
+    "Tempo": (0, 4, 1, 1),
+    "Filter": (1, 0, 1, 1),
+    "Filter Env": (1, 1, 1, 1),
+    "Amp Envelope": (1, 2, 1, 1),
+    "LFO": (1, 3, 1, 1),
+    "Glide": (1, 4, 1, 1),
+    "Effects": (2, 0, 1, 3),
+    "Unison": (2, 3, 1, 2),
 }
 
+# Groups whose controls wrap onto a new row after this many columns.
+GROUP_COLUMNS = {"Filter": 3, "LFO": 2}
+
+# Groups laid out as toggle "blocks": each toggle heads a block whose
+# dependent controls (Param.under) sit in a row beneath it.
 BLOCK_GROUPS = ("Effects",)
+BLOCK_MAX_COLUMNS = 6
+
+MIN_WINDOW_SIZE = (640, 420)
+
+
+class _BodyScroll(QScrollArea):
+    """Scroll area whose size hint follows its content (Qt caps the default)."""
+
+    def sizeHint(self):
+        widget = self.widget()
+        if widget is None:
+            return super().sizeHint()
+        frame = 2 * self.frameWidth()
+        return widget.sizeHint() + QSize(frame, frame)
 
 
 class MainWindow(QMainWindow):
@@ -56,6 +77,7 @@ class MainWindow(QMainWindow):
             self._build_patch_bar()
         self._build_body()
         self._build_footer(midi_ports)
+        self._fit_to_screen()
 
         bridge.param_changed.connect(self._on_param_changed)
         bridge.learned.connect(self._on_learned)
@@ -132,10 +154,42 @@ class MainWindow(QMainWindow):
             bar.addWidget(button)
             self.patch_btn[key] = button
 
+    def _block_widths(self):
+        """Columns each toggle block occupies, from its dependents' count."""
+        counts = {}
+        for param in self.registry:
+            if param.group in BLOCK_GROUPS and param.under:
+                root = param.under
+                while self.registry[root].under:
+                    root = self.registry[root].under
+                counts[root] = counts.get(root, 0) + 1
+        return {root: min(max(n, 1), BLOCK_MAX_COLUMNS) for root, n in counts.items()}
+
+    def _place_block(self, box, param, control, cells, state, widths):
+        """Place a control in a toggle-block group."""
+        if param.under:
+            root = param.under
+            while self.registry[root].under:
+                root = self.registry[root].under
+            count = state[root] = state.get(root, 0) + 1
+            rrow, rcol = cells[root]
+            width = widths[root]
+            row = rrow + 1 + (count - 1) // width
+            col = rcol + (count - 1) % width
+            span = 1
+        else:
+            width = widths.get(param.id, 1)
+            row = 0
+            col = sum(widths.get(k, 1) for k in cells if cells[k][0] == 0)
+            span = width
+        cells[param.id] = (row, col)
+        box.layout().addWidget(control, row, col, 1, span)
+
     def _build_body(self):
         groups = {}
         columns = {}
         members = {}
+        widths = self._block_widths()
         for param in self.registry:
             box = groups.get(param.group)
             if box is None:
@@ -146,39 +200,45 @@ class MainWindow(QMainWindow):
             control.learnRequested.connect(self._on_learn_requested)
             control.clearRequested.connect(self._on_clear_requested)
             cells = columns.setdefault(param.group, {})
+            self.controls[param.id] = control
             if param.group in BLOCK_GROUPS:
-                span = 1
-                if param.under:
-                    root = param.under
-                    while self.registry[root].under:
-                        root = self.registry[root].under
-                    count = members[root] = members.get(root, 0) + 1
-                    rrow, rcol = cells[root]
-                    row, col = rrow + 1 + (count - 1) // 2, rcol + (count - 1) % 2
-                else:
-                    row = 0
-                    col = 2 * sum(1 for r, _ in cells.values() if r == 0)
-                    span = 2
-                cells[param.id] = (row, col)
-                box.layout().addWidget(control, row, col, 1, span)
-                self.controls[param.id] = control
+                self._place_block(box, param, control, cells, members, widths)
                 continue
             if param.under:
                 row, col = cells[param.under]
                 row += 1
             else:
-                row, col = 0, sum(1 for r, _ in cells.values() if r == 0)
+                index = sum(1 for pid in cells if not self.registry[pid].under)
+                wrap = GROUP_COLUMNS.get(param.group)
+                row, col = divmod(index, wrap) if wrap else (0, index)
             cells[param.id] = (row, col)
             box.layout().addWidget(control, row, col)
-            self.controls[param.id] = control
+        for box in groups.values():
+            box.layout().setContentsMargins(4, 2, 4, 4)
+            box.layout().setSpacing(2)
         self.tempo_label = QLabel("")
         groups["Tempo"].layout().addWidget(self.tempo_label, 1, 0)
         grid = QGridLayout()
+        grid.setContentsMargins(6, 2, 6, 4)
+        grid.setSpacing(4)
         for index, (name, box) in enumerate(groups.items()):
-            grid.addWidget(box, *GROUP_POSITIONS.get(name, (2, index, 1, 1)))
+            grid.addWidget(box, *GROUP_POSITIONS.get(name, (3, index, 1, 1)))
         body = QWidget()
         body.setLayout(grid)
-        self.setCentralWidget(body)
+        self.scroll = _BodyScroll()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFrameShape(QFrame.NoFrame)
+        self.scroll.setWidget(body)
+        self.setCentralWidget(self.scroll)
+        self.setMinimumSize(*MIN_WINDOW_SIZE)
+
+    def _fit_to_screen(self):
+        hint = self.sizeHint()
+        screen = QApplication.primaryScreen()
+        if screen is not None:
+            avail = screen.availableGeometry()
+            hint = hint.boundedTo(QSize(avail.width(), avail.height()))
+        self.resize(hint.expandedTo(QSize(*MIN_WINDOW_SIZE)))
 
     def _build_footer(self, midi_ports):
         bar = self.statusBar()

@@ -158,7 +158,7 @@ def test_effect_dependents_sit_below_toggle_inside_its_span(rig):
     spans = []
     for t in toggles:
         trow, tcol, trs, tcs = cell(t)
-        assert (trow, tcs) == (0, 2)
+        assert trow == 0 and tcs >= 1
         spans.append(range(tcol, tcol + tcs))
     for a in range(len(spans)):
         for b in range(a + 1, len(spans)):
@@ -172,22 +172,22 @@ def test_effect_dependents_sit_below_toggle_inside_its_span(rig):
         assert tcol <= col < tcol + tcs
 
 
-def test_effect_blocks_flow_two_per_row(rig):
-    _, _, _, _, window = rig
+def test_effect_blocks_flow_in_one_row_under_their_toggle(rig):
+    _, registry, _, _, window = rig
     cell = _effects_layout(window)
 
     def rc(pid):
         return cell(pid)[:2]
 
     d = rc("fx_delay")[1]
-    assert rc("fx_delay_time") == (1, d)
-    assert rc("fx_delay_pingpong") == (1, d + 1)
-    assert rc("fx_delay_feedback") == (2, d)
-    assert rc("fx_delay_damp") == (2, d + 1)
+    delay_deps = ["fx_delay_time", "fx_delay_pingpong", "fx_delay_feedback",
+                  "fx_delay_damp", "fx_delay_sync", "fx_delay_division"]
+    assert cell("fx_delay")[3] == len(delay_deps)
+    assert [rc(pid) for pid in delay_deps] == [(1, d + i) for i in range(6)]
     r = rc("fx_reverb")[1]
-    assert rc("fx_reverb_amount") == (1, r)
-    assert rc("fx_reverb_size") == (1, r + 1)
-    assert rc("fx_reverb_damp") == (2, r)
+    assert [rc(pid) for pid in
+            ("fx_reverb_amount", "fx_reverb_size", "fx_reverb_damp")] == [
+        (1, r), (1, r + 1), (1, r + 2)]
     assert rc("fx_chorus_depth") == (1, rc("fx_chorus")[1])
     assert rc("fx_bitcrush_amount") == (1, rc("fx_bitcrush")[1])
 
@@ -198,3 +198,55 @@ def test_pingpong_is_below_delay_toggle(rig):
     trow, tcol, _, tcs = cell("fx_delay")
     prow, pcol, *_ = cell("fx_delay_pingpong")
     assert prow > trow and tcol <= pcol < tcol + tcs
+
+
+def _fit(window, width=1500, height=900):
+    window.resize(width, height)
+    window.show()
+    QApplication.processEvents()
+
+
+def test_window_size_hint_fits_a_small_screen(rig):
+    hint = rig[-1].sizeHint()
+    assert hint.width() <= 1500 and hint.height() <= 880
+
+
+def test_body_is_inside_a_scroll_area(rig):
+    from PySide6.QtWidgets import QScrollArea
+
+    window = rig[-1]
+    assert isinstance(window.centralWidget(), QScrollArea)
+    area = window.centralWidget()
+    assert area.widgetResizable()
+    assert area.widget().isAncestorOf(window.controls["master_gain"])
+
+
+def test_every_group_present_and_controls_do_not_overlap(rig):
+    from PySide6.QtWidgets import QGroupBox
+    from midi_synth.gui.controls import ParamControl
+    from midi_synth.gui.main_window import GROUP_POSITIONS
+
+    _, registry, _, _, window = rig
+    _fit(window, 1700, 1000)
+    boxes = {b.title(): b for b in window.findChildren(QGroupBox)}
+    assert set(boxes) == {p.group for p in registry} == set(GROUP_POSITIONS)
+    for title, box in boxes.items():
+        controls = [c for c in box.findChildren(ParamControl)]
+        assert controls
+        rects = [c.geometry() for c in controls]
+        inside = box.rect()
+        for rect in rects:
+            assert inside.contains(rect), (title, rect)
+        for i in range(len(rects)):
+            for j in range(i + 1, len(rects)):
+                assert not rects[i].intersects(rects[j]), (title, i, j)
+    window.close()
+
+
+def test_small_window_scrolls_instead_of_clipping(rig):
+    window = rig[-1]
+    _fit(window, 900, 600)
+    area = window.centralWidget()
+    assert area.verticalScrollBar().maximum() > 0
+    assert area.verticalScrollBar().isVisible()
+    window.close()
