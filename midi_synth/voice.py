@@ -31,6 +31,13 @@ class Envelope:
     def active(self):
         return self.stage != IDLE
 
+    @staticmethod
+    def _ramp(level, inc, count):
+        """Levels after 1..count repeated ``level += inc`` steps (bit-exact)."""
+        steps = np.full(count, inc, dtype=np.float64)
+        steps[0] += level
+        return np.cumsum(steps)
+
     def process(self, n):
         out = np.empty(n, dtype=np.float64)
         att_inc = 1.0 / (self.attack * self.sr)
@@ -39,25 +46,37 @@ class Envelope:
         level = self.level
         stage = self.stage
         sustain = self.sustain
-        for i in range(n):
+        pos = 0
+        while pos < n:
+            remaining = n - pos
             if stage == ATTACK:
-                level += att_inc
-                if level >= 1.0:
-                    level = 1.0
-                    stage = DECAY
+                seg = self._ramp(level, att_inc, remaining)
+                hit = seg >= 1.0
+                target, nxt = 1.0, DECAY
             elif stage == DECAY:
-                level -= dec_inc
-                if level <= sustain:
-                    level = sustain
-                    stage = SUSTAIN
-            elif stage == SUSTAIN:
-                level = sustain
+                seg = self._ramp(level, -dec_inc, remaining)
+                hit = seg <= sustain
+                target, nxt = sustain, SUSTAIN
             elif stage == RELEASE:
-                level -= rel_inc
-                if level <= 0.0:
-                    level = 0.0
-                    stage = IDLE
-            out[i] = level
+                seg = self._ramp(level, -rel_inc, remaining)
+                hit = seg <= 0.0
+                target, nxt = 0.0, IDLE
+            else:
+                out[pos:] = sustain if stage == SUSTAIN else level
+                if stage == SUSTAIN:
+                    level = sustain
+                break
+            k = int(np.argmax(hit))
+            if hit[k]:
+                out[pos:pos + k] = seg[:k]
+                out[pos + k] = target
+                level = target
+                stage = nxt
+                pos += k + 1
+            else:
+                out[pos:] = seg
+                level = float(seg[-1])
+                pos = n
         self.level = level
         self.stage = stage
         return out
@@ -119,24 +138,34 @@ class Voice:
         f2 = min(f2, limit)
         mode = params["mod_mode"]
         depth = params["fm_depth"]
+        level2 = params["osc2_level"]
+        audible2 = level2 != 0.0
         if mode == "sync":
             t1 = self.osc1.advance(f1, n)
             mod = self.osc1.shape(t1, f1)
-            sec_free = self.osc2.generate(f2, n)
-            ratio = (f2 / f1) if f1 else 1.0
-            sec_sync = self.osc2.shape(np.mod(t1 * ratio, 1.0), f2)
-            sec = sec_free * (1.0 - depth) + sec_sync * depth
-        elif mode == "fm":
-            mod = self.osc1.generate(f1, n)
-            sec = self.osc2.generate(f2, n, phase_mod=mod * params["mod_index"])
+            if audible2:
+                sec_free = self.osc2.generate(f2, n)
+                ratio = (f2 / f1) if f1 else 1.0
+                sec_sync = self.osc2.shape(np.mod(t1 * ratio, 1.0), f2)
+                sec = sec_free * (1.0 - depth) + sec_sync * depth
+            else:
+                self.osc2.advance(f2, n)
         else:
             mod = self.osc1.generate(f1, n)
-            sec = self.osc2.generate(f2, n)
-            if mode == "am":
-                sec = sec * (1.0 - 0.5 * depth + 0.5 * depth * mod)
-            elif mode == "ring":
-                sec = sec * ((1.0 - depth) + depth * mod)
-        mix = params["osc1_level"] * mod + params["osc2_level"] * sec
+            if not audible2:
+                self.osc2.advance(f2, n)
+            elif mode == "fm":
+                sec = self.osc2.generate(
+                    f2, n, phase_mod=mod * params["mod_index"])
+            else:
+                sec = self.osc2.generate(f2, n)
+                if mode == "am":
+                    sec = sec * (1.0 - 0.5 * depth + 0.5 * depth * mod)
+                elif mode == "ring":
+                    sec = sec * ((1.0 - depth) + depth * mod)
+        mix = params["osc1_level"] * mod
+        if audible2:
+            mix = mix + level2 * sec
         coeffs = params["lpf_coeffs"]
         if coeffs is not None and params["lpf_mode"] == "voice":
             mix = self.lpf.process(mix, coeffs)

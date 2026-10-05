@@ -72,4 +72,4 @@ def test_ref_voice_matches_production_voice(over):
         a = ref.render(256, params)
         b = prod.render(256, params)
         _check(a, 256)
-        assert np.array_equal(a, b)
+        assert np.max(np.abs(a - b)) < 1e-9

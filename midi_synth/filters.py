@@ -1,6 +1,7 @@
 import math
 
 import numpy as np
+from scipy.signal import lfilter
 
 LPF_MIN_HZ = 20.0
 LPF_MAX_HZ = 20000.0
@@ -38,12 +39,9 @@ class LowPass:
 
     def process(self, x, coeffs):
         b0, b1, b2, a1, a2 = coeffs
-        z1, z2 = self.z1, self.z2
-        samples = x.tolist()
-        for i, v in enumerate(samples):
-            y = b0 * v + z1
-            z1 = b1 * v - a1 * y + z2
-            z2 = b2 * v - a2 * y
-            samples[i] = y
-        self.z1, self.z2 = z1, z2
-        return np.array(samples, dtype=np.float64)
+        y, zf = lfilter(
+            [b0, b1, b2], [1.0, a1, a2], np.asarray(x, dtype=np.float64),
+            zi=[self.z1, self.z2],
+        )
+        self.z1, self.z2 = float(zf[0]), float(zf[1])
+        return y
