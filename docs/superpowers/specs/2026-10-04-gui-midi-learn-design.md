@@ -20,8 +20,10 @@ Registry of controllable parameters. Each entry: `id`, `kind`
 `_mode_from_cc`). Used by the GUI, the MIDI router and the console.
 
 ### `bindings.py` (no Qt)
-- `Source`: `(channel, msg_type, number)` where msg_type is `cc` or `note`.
-  Port-agnostic.
+- `Source`: `(msg_type, number, channel)` where msg_type is `cc` or `note` and
+  channel is 1-16 or `None` (any channel; used by the Default profile so
+  existing controllers on any channel keep working). Port-agnostic. An
+  exact-channel binding replaces an overlapping any-channel binding.
 - `Profile`: name + `{Source -> param_id}`. `bind(source, param_id)` removes any
   existing binding of that source or that param (rebinding steals).
   `clear(param_id)`. `to_dict` / `from_dict`.
@@ -35,8 +37,8 @@ Registry of controllable parameters. Each entry: `id`, `kind`
   (users can copy/share them to import/export).
 - First run seeds a `Default` profile with the current hard-coded map
   (CC1 mod, 7 volume, 20-23 effects, 24/25 waves, 26/27 tuning, 28/29 levels,
-  30 mode). `Default` can be reset to factory but not deleted; the last
-  remaining profile cannot be deleted.
+  30 mode). `Default` can be reset to factory but not renamed or deleted
+  (so at least one profile always exists).
 
 ### `midi_router.py`
 `MidiInput` keeps note / pitch-bend / program-change handling. Control
