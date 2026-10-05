@@ -1,8 +1,10 @@
 # Frozen copy of the pre-optimisation DSP implementation, used as the golden
-# reference for regression tests. Do not edit.
+# reference for regression tests. Do not edit (except the 2026-10-05 layer-gain change).
 import numpy as np
 
-from midi_synth.config import DEFAULT_DUTY, LAYER_GAIN, MIN_DUTY
+import math
+
+from midi_synth.config import DEFAULT_DUTY, MIN_DUTY
 from midi_synth.filters import lpf_coefficients  # noqa: F401  (math is unchanged)
 from midi_synth.voice import midi_note_to_freq, semitones_to_ratio
 
@@ -408,6 +410,14 @@ def ref_pulse_wave(t, inc, duty):
 _WAVEFORMS = ("saw", "square")
 
 
+def ref_layer_gain(duty):
+    # 2026-10-05: intentional change (RMS-matched layer gain), replaces the old constant 0.6.
+    d = min(max(duty, MIN_DUTY), 0.5)
+    if d >= 0.5:
+        return 1.0
+    return math.sqrt((1.0 / 3.0) / (1.0 / 3.0 + d / (1.0 - d) - 2.0 * d))
+
+
 class RefOscillator:
     def __init__(self, sr, waveform="saw"):
         if waveform not in _WAVEFORMS:
@@ -425,7 +435,7 @@ class RefOscillator:
         if self.waveform == "saw":
             saw = ref_saw_wave(t, inc)
             if self.layer_square:
-                return LAYER_GAIN * (saw + ref_pulse_wave(t, inc, self.duty))
+                return ref_layer_gain(self.duty) * (saw + ref_pulse_wave(t, inc, self.duty))
             return saw
         return ref_pulse_wave(t, inc, self.duty)
 

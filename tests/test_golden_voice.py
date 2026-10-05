@@ -6,10 +6,10 @@ from midi_synth.filters import LowPass, lpf_coefficients
 from midi_synth.oscillators import Oscillator, _poly_blep, pulse_wave, saw_wave
 from midi_synth.voice import Envelope, Voice
 from tests.reference_dsp import (
+    ref_layer_gain,
     RefEnvelope, RefLowPass, RefOscillator, RefVoice, ref_poly_blep,
     ref_pulse_wave, ref_saw_wave,
 )
-from midi_synth.config import LAYER_GAIN
 
 SR = 48000
 
@@ -175,7 +175,7 @@ def test_wave_shapes_match_reference(duty, inc):
     assert np.max(np.abs(saw_wave(t, inc) - ref_saw_wave(t, inc))) < 1e-12
     assert np.max(np.abs(pulse_wave(t, inc, duty)
                          - ref_pulse_wave(t, inc, duty))) < 1e-12
-    layered = LAYER_GAIN * (ref_saw_wave(t, inc) + ref_pulse_wave(t, inc, duty))
+    layered = ref_layer_gain(duty) * (ref_saw_wave(t, inc) + ref_pulse_wave(t, inc, duty))
     osc = Oscillator(SR, "saw")
     osc.layer_square = True
     osc.duty = duty

@@ -13,7 +13,9 @@ toggleable effects chain.
   channel aftertouch and MIDI clock.
 - **Two oscillators** (band-limited with PolyBLEP): osc 1 is a saw with an optional square
   layer (on by default); osc 2 is a square. Both squares have **PWM** (0-0.5, 0.5 = plain
-  square; default 0 = narrowest pulse). Osc 2 has **coarse** (-12..+12 semitones) and
+  square; default 0 = narrowest pulse). Osc 1's square layer is loudness-matched to the
+  saw (toggling it changes the tone, not the volume), and very narrow or wide pulses are
+  normalised automatically. Osc 2 has **coarse** (-12..+12 semitones) and
   **fine** (+/-0.5 cents) tuning. **Octave switches:** osc 1 one octave down, osc 2 one
   octave up (on by default).
 - **Modulation modes** (osc 1 -> osc 2): off, FM (phase modulation), AM, ring and hard sync,

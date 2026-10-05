@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from midi_synth.config import DEFAULT_DUTY, LAYER_GAIN, MIN_DUTY
+from midi_synth.config import DEFAULT_DUTY, MIN_DUTY
 from midi_synth.engine import SynthEngine
 from midi_synth.oscillators import Oscillator, pulse_wave, saw_wave
 
@@ -14,7 +14,7 @@ def phase_ramp(n, inc):
 
 
 def test_constants():
-    assert (MIN_DUTY, DEFAULT_DUTY, LAYER_GAIN) == (0.02, 0.5, 0.6)
+    assert (MIN_DUTY, DEFAULT_DUTY) == (0.02, 0.5)
 
 
 def test_unknown_waveform_rejected():
@@ -90,7 +90,7 @@ def test_layer_toggle_changes_output_and_is_bounded():
     raw = osc.generate(440.0, 4096)
     assert np.all(np.isfinite(raw))
     assert np.max(np.abs(raw)) < 1.3
-    assert np.max(np.abs(raw)) > 0.5  # saw+square peaks near LAYER_GAIN
+    assert np.max(np.abs(raw)) > 0.9  # RMS-matched layer peaks near the saw's
 
 
 def bin_mag(signal, freq):

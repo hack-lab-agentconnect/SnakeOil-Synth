@@ -1,6 +1,8 @@
+import math
+
 import numpy as np
 
-from .config import DEFAULT_DUTY, LAYER_GAIN, MIN_DUTY
+from .config import DEFAULT_DUTY, MIN_DUTY
 
 
 def _poly_blep(t, dt):
@@ -23,6 +25,18 @@ def _pulse_from_edges(t, duty, rising, inc):
 def pulse_wave(t, inc, duty):
     duty = min(max(duty, MIN_DUTY), 0.5)
     return _pulse_from_edges(t, duty, _poly_blep(t, inc), inc)
+
+
+def layer_gain(duty):
+    """Gain that makes saw + pulse (duty clamped like pulse_wave) match the saw's RMS.
+
+    For the saw (variance 1/3) and the pulse of effective duty d, var(pulse) = d / (1 - d)
+    and cov(saw, pulse) = -d, so var(saw + pulse) = 1/3 + d / (1 - d) - 2d.
+    """
+    d = min(max(duty, MIN_DUTY), 0.5)
+    if d >= 0.5:
+        return 1.0
+    return math.sqrt((1.0 / 3.0) / (1.0 / 3.0 + d / (1.0 - d) - 2.0 * d))
 
 
 _WAVEFORMS = ("saw", "square")
@@ -48,7 +62,7 @@ class Oscillator:
             if self.layer_square:
                 duty = min(max(self.duty, MIN_DUTY), 0.5)
                 pulse = _pulse_from_edges(t, duty, b0, inc)
-                return LAYER_GAIN * (saw + pulse)
+                return layer_gain(duty) * (saw + pulse)
             return saw
         return pulse_wave(t, inc, self.duty)
 
