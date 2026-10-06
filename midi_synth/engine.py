@@ -66,7 +66,9 @@ from .modmatrix import (
     SRC_LFO2,
     SRC_NOTE,
     SRC_WHEEL,
-    VOICE,
+    ENVELOPE_PARAMS,
+    TEMPO_PARAM,
+    UNISON_PARAMS,
     destination,
     effective,
     note_source,
@@ -151,6 +153,11 @@ class SynthEngine:
         self._last_note = None
         self.mod_rows = [["none", 0.0, "none"] for _ in range(NUM_SLOTS)]
         self._mod_dsts = ()
+        self._mod_env = ()
+        self._mod_uni = ()
+        self._mod_tempo = None
+        self._env_modulated = False
+        self._uni_modulated = {"unison_detune": False, "unison_spread": False}
         self._mod_lfo = [False, False]
         self._mod_wheel_used = False
         self._mod_at_used = False
@@ -424,8 +431,7 @@ class SynthEngine:
             elif si == SRC_AFTERTOUCH:
                 at = True
             d = destination(dst)
-            if d.kind == VOICE:
-                by_dst.setdefault(d.param_id, (d, []))[1].append((amt, si))
+            by_dst.setdefault(d.param_id, (d, []))[1].append((amt, si))
         if wheel and not self._mod_wheel_used:
             self._wheel_s = self._mod_wheel
         if at and not self._mod_at_used:
@@ -433,9 +439,37 @@ class SynthEngine:
         self._mod_wheel_used = wheel
         self._mod_at_used = at
         self._mod_lfo = lfo
-        self._mod_dsts = tuple(
-            (d, tuple(terms), any(s == SRC_NOTE for _, s in terms))
-            for d, terms in by_dst.values())
+        view, env, uni, tempo = [], [], [], None
+        for pid, (d, terms) in by_dst.items():
+            item = (d, tuple(terms), any(s == SRC_NOTE for _, s in terms))
+            if pid in ENVELOPE_PARAMS:
+                env.append((pid,) + item)
+            elif pid in UNISON_PARAMS:
+                uni.append((pid,) + item)
+            elif pid == TEMPO_PARAM:
+                tempo = item
+            else:
+                view.append(item)
+        self._mod_dsts = tuple(view)
+        self._mod_env = tuple(env)
+        self._mod_uni = tuple(uni)
+        self._mod_tempo = tempo
+        if self._env_modulated and not env:
+            self._apply_envelope()
+        self._env_modulated = bool(env)
+        active = {pid for pid, *_ in uni}
+        for pid, was in self._uni_modulated.items():
+            if was and pid not in active:
+                self._restore_unison(pid)
+            self._uni_modulated[pid] = pid in active
+
+    def _restore_unison(self, pid):
+        base = self.params[pid]
+        for v in self.voices:
+            if pid == "unison_detune":
+                v.detune_cents = v.unison_pos * base
+            else:
+                v.pan = v.unison_pos * base
 
     @staticmethod
     def _mod_slot(slot):
@@ -509,15 +543,20 @@ class SynthEngine:
     def modulated_value(self, param_id, note=None):
         """Effective value of a destination (its base value when unmodulated)."""
         with self.lock:
+            nv = note_source(self._last_note if note is None else note)
+            if param_id == TEMPO_PARAM and self._mod_tempo is not None:
+                return self._tempo_bpm(self._mod_values())
             for d, terms, _ in self._mod_dsts:
                 if d.param_id == param_id:
-                    nv = note_source(self._last_note if note is None else note)
+                    return self._mod_eff(d, terms, self._mod_values(), nv)
+            for pid, d, terms, _ in self._mod_env + self._mod_uni:
+                if pid == param_id:
                     return self._mod_eff(d, terms, self._mod_values(), nv)
             return self.params[param_id]
 
-    def _mod_eff(self, d, terms, vals, note_val):
+    def _mod_eff(self, d, terms, vals, note_val, base=None):
         return effective(
-            self.params[d.param_id],
+            self.params[d.param_id] if base is None else base,
             [(a, note_val if s == SRC_NOTE else vals[s]) for a, s in terms],
             d.lo, d.hi)
 
@@ -555,6 +594,44 @@ class SynthEngine:
             for pid, value in shared.items():
                 self._mod_apply(view, pid, value)
         return view, note_dsts, master_over
+
+    def _mod_plan(self, entries, vals):
+        """Split matrix entries into block-wide values and per-note entries."""
+        shared, per_note = {}, []
+        for pid, d, terms, note_dep in entries:
+            if note_dep:
+                per_note.append((pid, d, terms))
+            else:
+                shared[pid] = self._mod_eff(d, terms, vals, 0.0)
+        return shared, per_note
+
+    def _mod_voice_eff(self, plan, v, vals):
+        eff = dict(plan[0])
+        if plan[1]:
+            nv = note_source(v.note)
+            for pid, d, terms in plan[1]:
+                eff[pid] = self._mod_eff(d, terms, vals, nv)
+        return eff
+
+    def _mod_voice_state(self, v, vals, env_plan, uni_plan):
+        """Apply envelope shapes and unison offsets for one voice."""
+        p = self.params
+        if env_plan is not None:
+            eff = self._mod_voice_eff(env_plan, v, vals)
+            v.env.set_shape(eff.get("amp_attack", p["amp_attack"]),
+                            eff.get("amp_decay", p["amp_decay"]),
+                            eff.get("amp_sustain", p["amp_sustain"]),
+                            eff.get("amp_release", p["amp_release"]))
+            v.flt_env.set_shape(eff.get("flt_attack", p["flt_attack"]),
+                                eff.get("flt_decay", p["flt_decay"]),
+                                eff.get("flt_sustain", p["flt_sustain"]),
+                                eff.get("flt_release", p["flt_release"]))
+        if uni_plan is not None:
+            eff = self._mod_voice_eff(uni_plan, v, vals)
+            if "unison_detune" in eff:
+                v.detune_cents = v.unison_pos * eff["unison_detune"]
+            if "unison_spread" in eff:
+                v.pan = v.unison_pos * eff["unison_spread"]
 
     def _mod_voice_view(self, shared, note_dsts, vals, note):
         view = dict(shared)
@@ -599,6 +676,7 @@ class SynthEngine:
         gain = 1.0 / np.sqrt(count)
         for v, pos in zip(voices, spread_pos):
             v.note_on(note, vel, self._order, glide_from, glide_time,
+                      unison_pos=float(pos),
                       detune_cents=float(pos * p["unison_detune"]),
                       pan=float(pos * p["unison_spread"]), gain=float(gain),
                       group=self._group_counter, random_phase=True, rng=self._rng)
@@ -714,15 +792,25 @@ class SynthEngine:
     def _sync_delay(self):
         """Lock the delay time to the tempo (external clock wins over manual)."""
         p = self.params
-        bpm = self.tempo.effective_bpm(p["tempo_bpm"])
+        bpm = self.effective_bpm()
         ms = 60000.0 / bpm * DELAY_DIVISION_BEATS[p["delay_division"]]
         ms = min(max(ms, 1.0), 4000.0)
         delay = self.effects.delay
         if abs(ms - delay.time_ms) > 0.5:
             delay.set_time_ms(ms)
 
+    def _tempo_bpm(self, vals):
+        """Tempo in use (external clock or manual) with the matrix applied."""
+        base = self.tempo.effective_bpm(self.params["tempo_bpm"])
+        t = self._mod_tempo
+        if t is None:
+            return base
+        d, terms, _ = t
+        return self._mod_eff(d, terms, vals, note_source(self._last_note), base)
+
     def effective_bpm(self):
-        return self.tempo.effective_bpm(self.params["tempo_bpm"])
+        """Tempo driving the synced delay, including Mod Matrix `Tempo` rows."""
+        return self._tempo_bpm(self._mod_values())
 
     def set_delay_pingpong(self, on):
         with self.lock:
@@ -827,25 +915,33 @@ class SynthEngine:
         with self.lock:
             mix = np.zeros(n, dtype=np.float64)
             params = self.params
-            if params["delay_sync"]:
-                self._sync_delay()
             lfo_filter = False
             mod = self._mod_dsts
             if (params["lfo_depth"] > 0.0 or params["lfo2_depth"] > 0.0
                     or self._mod_lfo[0] or self._mod_lfo[1]):
                 lfo_filter = self._run_lfo(n)
             view, note_dsts, master_over, vals = params, (), None, None
-            if mod:
+            env_plan = uni_plan = None
+            if mod or self._mod_env or self._mod_uni or self._mod_tempo is not None:
                 if self._mod_wheel_used:
                     self._wheel_s = smooth(self._wheel_s, self._mod_wheel, MOD_SMOOTH)
                 if self._mod_at_used:
                     self._at_s = smooth(self._at_s, self._mod_at, MOD_SMOOTH)
                 vals = self._mod_values()
-                view, note_dsts, master_over = self._mod_prepare(vals)
+                if mod:
+                    view, note_dsts, master_over = self._mod_prepare(vals)
+                if self._mod_env:
+                    env_plan = self._mod_plan(self._mod_env, vals)
+                if self._mod_uni:
+                    uni_plan = self._mod_plan(self._mod_uni, vals)
+            if params["delay_sync"]:
+                self._sync_delay()
             panned = []
             stereo = False
             for v in self.voices:
                 if v.active:
+                    if env_plan is not None or uni_plan is not None:
+                        self._mod_voice_state(v, vals, env_plan, uni_plan)
                     if note_dsts:
                         out_v = v.render(
                             n, self._mod_voice_view(view, note_dsts, vals, v.note))
@@ -955,7 +1051,7 @@ class SynthEngine:
                 "tempo_bpm": self.params["tempo_bpm"],
                 "delay_sync": self.params["delay_sync"],
                 "delay_division": self.params["delay_division"],
-                "effective_bpm": self.effective_bpm(),
+                "effective_bpm": self.tempo.effective_bpm(self.params["tempo_bpm"]),
                 **{"mod%d_%s" % (i + 1, key): value
                    for i, r in enumerate(self.mod_rows)
                    for key, value in zip(("src", "amt", "dst"), r)},

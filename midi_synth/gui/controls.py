@@ -14,6 +14,7 @@ TITLE_WIDTH = 64
 # Compact combos size from the longest choice in pixels (a character-count
 # size would balloon with wide fonts and widen the whole window).
 COMPACT_CHAR_PX = 6.0
+COMPACT_MAX_CHARS = 18  # longer names are elided in the box; the popup shows them in full
 COMPACT_COMBO_PAD = 30
 
 
@@ -126,7 +127,8 @@ class ParamControl(QFrame):
             if self.compact:
                 combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
                 combo.setMinimumContentsLength(4)
-                longest = max((len(c) for c in param.choices), default=4)
+                longest = min(max((len(c) for c in param.choices), default=4),
+                              COMPACT_MAX_CHARS)
                 combo.setMinimumWidth(int(COMPACT_CHAR_PX * longest) + COMPACT_COMBO_PAD)
             if self.compact and any(":" in c for c in param.choices):
                 combo.setModel(grouped_model(param.choices))

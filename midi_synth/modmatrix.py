@@ -7,7 +7,20 @@ destination's range. A base of 0 therefore stays 0.
 """
 from dataclasses import dataclass
 
-from .config import CENTS_MAX, CENTS_MIN, MOD_SMOOTH, SEMITONE_MAX, SEMITONE_MIN
+from .config import (
+    AMP_ATTACK_MAX,
+    AMP_DECAY_MAX,
+    AMP_RELEASE_MAX,
+    AMP_TIME_MIN,
+    CENTS_MAX,
+    CENTS_MIN,
+    MOD_SMOOTH,
+    SEMITONE_MAX,
+    SEMITONE_MIN,
+    TEMPO_MAX,
+    TEMPO_MIN,
+    UNISON_DETUNE_MAX,
+)
 from .filters import LPF_MAX_HZ, LPF_MIN_HZ
 
 SOURCES = ("none", "Note Number", "LFO 1", "LFO 2", "Mod Wheel", "Aftertouch")
@@ -37,12 +50,28 @@ DESTINATIONS = (
     Destination("Osc 2: Fine", "detune2_cents", VOICE, CENTS_MIN, CENTS_MAX),
     Destination("Osc 2: PWM", "osc2_pwm", VOICE, 0.0, 0.5),
     Destination("Modulation Amount", "fm_depth", VOICE, 0.0, 1.0),
+    Destination("Tempo", "tempo_bpm", GLOBAL, TEMPO_MIN, TEMPO_MAX),
     Destination("Filter: Cutoff", "lpf_cutoff", VOICE, LPF_MIN_HZ, LPF_MAX_HZ),
     Destination("Filter: Resonance", "lpf_resonance", VOICE, 0.0, 1.0),
     Destination("Filter: Env Amount", "flt_env_amount", VOICE, -1.0, 1.0),
     Destination("Filter: Key Trk", "flt_keytrack", VOICE, 0.0, 1.0),
     Destination("Filter: Vel>Cut", "flt_vel", VOICE, 0.0, 1.0),
+    Destination("Filter Env: Attack", "flt_attack", VOICE, AMP_TIME_MIN, AMP_ATTACK_MAX),
+    Destination("Filter Env: Decay", "flt_decay", VOICE, AMP_TIME_MIN, AMP_DECAY_MAX),
+    Destination("Filter Env: Sustain", "flt_sustain", VOICE, 0.0, 1.0),
+    Destination("Filter Env: Release", "flt_release", VOICE, AMP_TIME_MIN, AMP_RELEASE_MAX),
+    Destination("Amp Env: Attack", "amp_attack", VOICE, AMP_TIME_MIN, AMP_ATTACK_MAX),
+    Destination("Amp Env: Decay", "amp_decay", VOICE, AMP_TIME_MIN, AMP_DECAY_MAX),
+    Destination("Amp Env: Sustain", "amp_sustain", VOICE, 0.0, 1.0),
+    Destination("Amp Env: Release", "amp_release", VOICE, AMP_TIME_MIN, AMP_RELEASE_MAX),
+    Destination("Unison: Detune", "unison_detune", VOICE, 0.0, UNISON_DETUNE_MAX),
+    Destination("Unison: Spread", "unison_spread", VOICE, 0.0, 1.0),
 )
+
+ENVELOPE_PARAMS = ("amp_attack", "amp_decay", "amp_sustain", "amp_release",
+                   "flt_attack", "flt_decay", "flt_sustain", "flt_release")
+UNISON_PARAMS = ("unison_detune", "unison_spread")
+TEMPO_PARAM = "tempo_bpm"
 
 DEST_NAMES = ("none",) + tuple(d.name for d in DESTINATIONS)
 _BY_NAME = {d.name: d for d in DESTINATIONS}
@@ -101,6 +130,9 @@ def parse_mod_args(tokens):
     if not 1 <= slot <= NUM_SLOTS:
         raise ValueError("slot out of range")
     dest_aliases = {_squash(n): n for n in DEST_NAMES}
+    for n in DEST_NAMES:
+        if n.startswith("Amp Env:"):
+            dest_aliases.setdefault(_squash("Amp" + n[len("Amp Env"):]), n)
     for k in (1, 2):
         source = _SOURCE_ALIASES.get(_squash("".join(tokens[1:1 + k])))
         if source is None or len(tokens) < k + 3:

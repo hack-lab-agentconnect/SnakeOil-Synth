@@ -116,6 +116,7 @@ class Voice:
         self.pan = 0.0
         self.gain = 1.0
         self.group = None
+        self.unison_pos = 0.0
 
     @property
     def active(self):
@@ -123,7 +124,7 @@ class Voice:
 
     def note_on(self, note, velocity, order, glide_from=None, glide_time=0.0,
                 detune_cents=0.0, pan=0.0, gain=1.0, group=None,
-                random_phase=False, rng=None):
+                random_phase=False, rng=None, unison_pos=0.0):
         self.note = note
         self.gate = True
         self.freq = midi_note_to_freq(note)
@@ -140,6 +141,7 @@ class Voice:
         self.pan = pan
         self.gain = gain
         self.group = group
+        self.unison_pos = unison_pos
         if random_phase:
             self.osc1.phase = rng.random()
             self.osc2.phase = rng.random()

@@ -30,7 +30,7 @@ def test_sources_exact():
 
 def test_destination_names_start_with_none_and_cover_m1():
     assert DEST_NAMES[0] == "none"
-    assert DEST_NAMES[1:1 + len(M1_NAMES)] == M1_NAMES
+    assert tuple(n for n in DEST_NAMES[1:] if n in M1_NAMES) == M1_NAMES
     assert len(set(DEST_NAMES)) == len(DEST_NAMES)
 
 

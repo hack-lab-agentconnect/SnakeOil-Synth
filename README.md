@@ -293,9 +293,28 @@ Amount at 0 ...), so give it a non-zero value first. Example: Filter Cutoff at
 
 Destinations so far: `Osc 1: Level`, `Osc 1: PWM`, `Osc 1: Sq Level`,
 `Osc 2: Level`, `Osc 2: Tune`, `Osc 2: Fine`, `Osc 2: PWM`, `Modulation Amount`,
-`Filter: Cutoff`, `Filter: Resonance` (per voice or on the master bus, where
+`Tempo`, `Filter: Cutoff`, `Filter: Resonance` (per voice or on the master bus, where
 Note Number means the last played note), `Filter: Env Amount`,
-`Filter: Key Trk`, `Filter: Vel>Cut`. Envelopes, unison, tempo and effects follow.
+`Filter: Key Trk`, `Filter: Vel>Cut`, `Filter Env: Attack/Decay/Sustain/Release`,
+`Amp Env: Attack/Decay/Sustain/Release`, `Unison: Detune` and `Unison: Spread`.
+Effects follow.
+
+- **Envelopes** are modulated per voice (so Note Number can give two held notes
+  different decay times). The effective stage times are clamped to the knob ranges
+  and sustain to 0..1; the other stages of that envelope keep their knob values.
+  Clearing the last envelope row restores the knob shapes exactly. A change reaches
+  a note that is already sounding at the next block.
+- **Unison Detune / Spread** are live: every unison voice keeps its position in the
+  stack (-1..+1) and its detune and pan follow `position x effective value` each
+  block. A Spread or Detune of 0 stays 0 (relative rule).
+- **Tempo** is applied on top of whichever tempo is in use (the MIDI clock when one
+  is arriving, else the manual BPM): `bpm = clamp(tempo x (1 + sum), 40, 240)`. It
+  drives the tempo-synced delay. Note Number means the last played note. The
+  tempo label in the window keeps showing the BASE tempo (manual or MIDI clock).
+- Console aliases: lowercase name without spaces, e.g. `mod 3 wheel -50 ampenv:attack`
+  (also `amp:attack`), `mod 4 note 30 unison:detune`, `mod 5 lfo2 20 tempo`,
+  `filterenv:release`.
+
 Matrix rows apply in addition to the LFOs' own destinations.
 
 Console: `mod <slot 1-8> <source|none> <scale -100..100> <destination|none>`,

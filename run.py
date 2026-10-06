@@ -146,7 +146,9 @@ HELP_TEXT = """commands:
                              destinations: lowercase name, spaces removed
                              (osc1:level osc2:tune modulationamount filter:cutoff
                              filter:resonance filter:envamount filter:keytrk
-                             filter:vel>cut ...) or none
+                             filter:vel>cut tempo filterenv:attack|decay|sustain|release
+                             ampenv:attack|decay|sustain|release (also amp:attack ...)
+                             unison:detune unison:spread ...) or none
   mod clear [slot]           empty one matrix row, or all of them
   tune2 <-12..12>            osc2 coarse semitones
   cents2 <-0.5..0.5>         osc2 fine cents

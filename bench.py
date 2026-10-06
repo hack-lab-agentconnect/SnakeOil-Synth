@@ -43,11 +43,34 @@ CASES = [
                 e.set_mod_dst(3, "Osc 2: Level"),
                 e.set_mod_src(4, "LFO 1"), e.set_mod_amt(4, 0.4),
                 e.set_mod_dst(4, "Osc 1: Level"))),
+    ("matrix: unison 12 detune/spread + ADSR by note",
+     lambda e: (e.set_unison_voices(12), e.set_mod_wheel(0.8),
+                e.set_mod_src(1, "Mod Wheel"), e.set_mod_amt(1, 0.5),
+                e.set_mod_dst(1, "Unison: Detune"),
+                e.set_mod_src(2, "LFO 1"), e.set_mod_amt(2, 0.5),
+                e.set_mod_dst(2, "Unison: Spread"),
+                e.set_mod_src(3, "Note Number"), e.set_mod_amt(3, 0.6),
+                e.set_mod_dst(3, "Amp Env: Decay"),
+                e.set_mod_src(4, "Note Number"), e.set_mod_amt(4, -0.4),
+                e.set_mod_dst(4, "Filter Env: Release"))),
+    ("matrix: ADSR x8 by note, all four effects",
+     lambda e: (fx("chorus", "delay", "reverb", "bitcrush")(e), note_rows(e, ENV_DESTS))),
     ("unison 5", lambda e: e.set_unison_voices(5)),
     ("unison 12, all four effects",
      lambda e: (e.set_unison_voices(12), fx("chorus", "delay", "reverb", "bitcrush")(e))),
     ("all four effects", fx("chorus", "delay", "reverb", "bitcrush")),
 ]
+
+
+ENV_DESTS = tuple("%s Env: %s" % (env, stage) for env in ("Amp", "Filter")
+                  for stage in ("Attack", "Decay", "Sustain", "Release"))
+
+
+def note_rows(e, dests):
+    for slot, dest in enumerate(dests, 1):
+        e.set_mod_src(slot, "Note Number")
+        e.set_mod_amt(slot, 0.5)
+        e.set_mod_dst(slot, dest)
 
 
 def run(label, setup, sr, block, blocks):
