@@ -2,6 +2,7 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+import numpy as np
 import pytest
 
 pytest.importorskip("PySide6")
@@ -318,7 +319,9 @@ def test_master_group_has_limiter_toggle_and_gr_label(rig):
     window.close()
 
 
-def test_gr_label_follows_limiter(qapp, tmp_path):
+def test_gr_label_shows_held_value_and_click_resets(qapp, tmp_path):
+    from PySide6.QtTest import QTest
+
     engine, registry, *_, window = _make_rig(tmp_path, 8)
     window._meter_timer.stop()
     window._meter_tick()
@@ -326,16 +329,19 @@ def test_gr_label_follows_limiter(qapp, tmp_path):
     registry.set("auto_limiter", True)
     window._meter_tick()
     assert window.limiter_label.text() == "GR 0.0 dB"
-    engine.set_osc_levels(1.0, 1.0)
-    engine.set_master_gain(1.5)
-    for note in (48, 55, 60, 64, 67, 72):
-        engine.note_on(note, 127)
-    for _ in range(8):
-        engine.render(64)
+    engine._run_limiter(np.full((2, 64), 2.0))
     window._meter_tick()
-    text = window.limiter_label.text()
-    assert text.startswith("GR -") and text.endswith(" dB") and text != "GR -0.0 dB"
-    assert not window.meter.clip_lit
+    held = window.limiter_label.text()
+    assert held.startswith("GR -") and held.endswith(" dB") and held != "GR -0.0 dB"
+    engine._run_limiter(np.full((2, 64), 0.05))
+    window._meter_tick()
+    assert window.limiter_label.text() == held
+    assert window.limiter_label.cursor().shape() == Qt.PointingHandCursor
+    assert window.limiter_label.toolTip() == "Click to reset the held gain reduction"
+    QTest.mouseClick(window.limiter_label, Qt.LeftButton)
+    assert engine.limiter_reduction_db() == 0.0
+    window._meter_tick()
+    assert window.limiter_label.text() == "GR 0.0 dB"
     registry.set("auto_limiter", False)
     window._meter_tick()
     assert window.limiter_label.text() == "GR off"

@@ -5,6 +5,8 @@ import numpy as np
 
 from .config import (
     CLIP_THRESHOLD,
+    LIMITER_SILENCE_S,
+    LIMITER_SILENCE_THRESHOLD,
     SAMPLE_RATE,
     BLOCK_SIZE,
     MAX_VOICES,
@@ -89,7 +91,7 @@ class SynthEngine:
         self._meter_post = np.zeros(2)
         self._meter_clip = False
         self._limiter = Limiter(sr)
-        self._limiter_min_gain = 1.0
+        self._limiter_silent_s = 0.0
         self.last_driven_peak = 0.0
         self.voices = [Voice(sr) for _ in range(max_voices)]
         self.effects = EffectChain(sr)
@@ -326,8 +328,27 @@ class SynthEngine:
     def set_auto_limiter(self, on):
         with self.lock:
             self.params["auto_limiter"] = bool(on)
-            self._limiter.reset()
-            self._limiter_min_gain = 1.0
+            self._reset_limiter()
+
+    def _reset_limiter(self):
+        self._limiter.reset()
+        self._limiter_silent_s = 0.0
+
+    def reset_limiter(self):
+        """Drop the held gain reduction and restart the silence timer."""
+        with self.lock:
+            self._reset_limiter()
+
+    def _run_limiter(self, driven):
+        """Limit ``driven``; reset the hold after LIMITER_SILENCE_S of silent input."""
+        limited, in_peak = self._limiter.process(driven)
+        if in_peak < LIMITER_SILENCE_THRESHOLD:
+            self._limiter_silent_s += driven.shape[1] / self.sr
+            if self._limiter_silent_s >= LIMITER_SILENCE_S:
+                self._reset_limiter()
+        else:
+            self._limiter_silent_s = 0.0
+        return limited
 
     def _set_unit(self, key, value, lo, hi):
         with self.lock:
@@ -856,6 +877,7 @@ class SynthEngine:
             self.sustain = False
             self._mod_wheel = self._wheel_s = 0.0
             self._reset_aftertouch()
+            self._reset_limiter()
 
     def _reset_aftertouch(self):
         self._mod_at = self._at_s = 0.0
@@ -1121,9 +1143,7 @@ class SynthEngine:
                 out = self.effects.process(out)
             driven = out * params["master_gain"]
             if params["auto_limiter"]:
-                driven, min_gain = self._limiter.process(driven)
-                if min_gain < self._limiter_min_gain:
-                    self._limiter_min_gain = min_gain
+                driven = self._run_limiter(driven)
             out = np.tanh(driven)
             self._meter_post = np.maximum(self._meter_post, np.abs(out).max(axis=1))
             self.last_driven_peak = float(np.abs(driven).max())
@@ -1150,17 +1170,12 @@ class SynthEngine:
     def _gain_to_db(gain):
         return -20.0 * math.log10(max(gain, 1e-6))
 
-    def peek_limiter(self):
-        """Largest limiter gain reduction in dB (>= 0) since the last take_limiter."""
+    def limiter_reduction_db(self):
+        """Held limiter gain reduction in dB (>= 0); 0.0 when off or idle."""
         with self.lock:
-            return self._gain_to_db(self._limiter_min_gain)
-
-    def take_limiter(self):
-        """Like peek_limiter, then reset the running maximum."""
-        with self.lock:
-            result = self._gain_to_db(self._limiter_min_gain)
-            self._limiter_min_gain = 1.0
-            return result
+            if not self.params["auto_limiter"]:
+                return 0.0
+            return self._gain_to_db(1.0 - self._limiter.h)
 
     def _fx_status(self, pid):
         """Effect dial value for ``status``: the live value when unmodulated

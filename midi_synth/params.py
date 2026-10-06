@@ -72,6 +72,7 @@ class ParamRegistry:
     def __init__(self, params):
         self._params = {p.id: p for p in params}
         self._listeners = []
+        self._patch_listeners = []
         self._pressed = {}
 
     def __iter__(self):
@@ -88,6 +89,17 @@ class ParamRegistry:
 
     def add_listener(self, fn):
         self._listeners.append(fn)
+
+    def add_patch_listener(self, fn):
+        """Call ``fn()`` after a whole patch has been applied."""
+        self._patch_listeners.append(fn)
+
+    def patch_applied(self):
+        for fn in list(self._patch_listeners):
+            try:
+                fn()
+            except Exception:
+                pass
 
     def get(self, param_id):
         return self._params[param_id].get()
@@ -262,7 +274,7 @@ def build_registry(engine):
         Param(id="auto_limiter", label="Auto Limiter", group="Master", kind=TOGGLE,
               get=lambda: p["auto_limiter"], set=engine.set_auto_limiter,
               tooltip="Automatically turns the volume down when the signal would "
-                      "clip, then lets it come back up (about 0.15 s)."),
+                      "clip and holds it there until silence, a patch change or a reset."),
     ]
     params += [
         envelope("amp_attack", "Attack", AMP_ATTACK_MAX,
@@ -415,4 +427,6 @@ def build_registry(engine):
         params.append(effect(n))
         params.append(dials[n])
         params.extend(extras.get(n, ()))
-    return ParamRegistry(params)
+    registry = ParamRegistry(params)
+    registry.add_patch_listener(engine.reset_limiter)
+    return registry

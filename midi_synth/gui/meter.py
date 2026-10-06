@@ -5,7 +5,7 @@ import time
 
 from PySide6.QtCore import QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QPainter
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QLabel, QWidget
 
 FLOOR_DB = -60.0
 YELLOW_DB = -12.0
@@ -41,6 +41,20 @@ def level_to_db(peak):
 def db_to_fraction(db):
     """dBFS to a 0..1 bar fraction, linear in dB from FLOOR_DB to 0 dBFS."""
     return min(max((db - FLOOR_DB) / -FLOOR_DB, 0.0), 1.0)
+
+
+class ClickableLabel(QLabel):
+    """A label that calls ``on_click`` when pressed with the left button."""
+
+    def __init__(self, text, on_click, parent=None):
+        super().__init__(text, parent)
+        self._on_click = on_click
+        self.setCursor(Qt.PointingHandCursor)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._on_click()
+        event.accept()
 
 
 class LevelMeter(QWidget):

@@ -11,7 +11,7 @@ from ..patches import INIT_NAME, PatchError, apply as apply_patch, capture
 from ..profiles import ProfileError
 from ..recorder import recording_path
 from .controls import ParamControl
-from .meter import LevelMeter
+from .meter import ClickableLabel, LevelMeter
 from .qwerty import QwertyKeyboard
 
 # Grid cell (row, column, rowspan, colspan) freed by the LFO merge, holding
@@ -283,9 +283,9 @@ class MainWindow(QMainWindow):
         master = groups["Master"].layout()
         meter_col = master.columnCount()
         master.addWidget(self.meter, 0, meter_col, Qt.AlignTop)
-        self.limiter_label = QLabel("GR off")
+        self.limiter_label = ClickableLabel("GR off", self.engine.reset_limiter)
         self.limiter_label.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
-        self.limiter_label.setToolTip("Gain reduction applied by the auto limiter.")
+        self.limiter_label.setToolTip("Click to reset the held gain reduction")
         master.addWidget(self.limiter_label, 1, meter_col, Qt.AlignTop)
         grid = QGridLayout()
         grid.setContentsMargins(6, 2, 6, 4)
@@ -604,7 +604,7 @@ class MainWindow(QMainWindow):
         try:
             left, right, clipped = self.engine.take_meter()
             self.meter.update_levels(left, right, clipped)
-            reduction = self.engine.take_limiter()
+            reduction = self.engine.limiter_reduction_db()
             if not self.engine.params["auto_limiter"]:
                 text = "GR off"
             elif reduction < 0.05:

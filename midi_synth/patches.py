@@ -50,6 +50,7 @@ def apply(registry, values, defaults):
             registry.set(pid, value)
         except (ValueError, TypeError, OverflowError, ArithmeticError) as exc:
             warnings.append("Skipped invalid value for %s: %s" % (pid, exc))
+    registry.patch_applied()
     return warnings
 
 

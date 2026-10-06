@@ -203,23 +203,34 @@ only watches the audio; it does not change the sound.
 ## Auto limiter
 
 The **Auto Limiter** switch (Master group, off by default) turns the volume down by itself
-when the signal would clip, and lets it come back up afterwards. With it off, the sound is
-exactly as before.
+when the signal would clip, and keeps it down. With it off, the sound is exactly as before.
 
 - It works on the signal after master volume, just before the soft clipper, and keeps
   the peaks at or below 0.98 (about -0.2 dBFS), so the clipper stays out of its hard range.
-- **Instant attack, 0.15 s release:** the gain drops the moment a peak would go over the
-  ceiling, and recovers smoothly (the reduction falls to about 37% in 0.15 s).
+- **Instant attack, hold, no release:** the gain drops the moment a peak would go over the
+  ceiling, to exactly the level that peak needs. It then stays there. It only goes lower
+  if a louder peak comes; it never comes back up by itself while audio keeps playing. So
+  a single big peak keeps the level lowered until one of the resets below happens.
+- **The hold is reset** (the gain goes back to full) when:
+  - the audio is silent: the signal entering the limiter stays below -60 dBFS (peak
+    0.001) for 0.5 s without a break. Effect tails count as audio, because the reverb and
+    delay output goes through the limiter too, so a decaying tail never makes the level
+    jump up. The reset comes after the tail has died away;
+  - you load a patch (GUI, console `patch load`, `--patch`, or the last-used patch at
+    startup);
+  - you switch the limiter on or off, or use panic;
+  - you click the **GR** readout, or type `limiter reset` in the console.
 - **Linked stereo:** both channels get the same gain, so the stereo image does not shift.
-- A quiet signal passes through unchanged (bit for bit).
-- The **GR** readout under the level meter shows the largest gain reduction since the last
-  update, for example `GR -3.2 dB`; `GR 0.0 dB` means the limiter is idle, and `GR off`
-  means it is switched off.
+- With no reduction held, a quiet signal passes through unchanged (bit for bit). While a
+  reduction is held, quiet sounds are lowered by it too.
+- The **GR** readout under the level meter shows the held gain reduction, for example
+  `GR -6.2 dB`. The number stays the same until a reset. `GR 0.0 dB` means nothing is held
+  and `GR off` means the limiter is switched off. Click it to reset the hold.
 - With the limiter on, the **CLIP** light and the meter show the signal after limiting, so
   a signal that would clip with the limiter off does not light CLIP.
 - It belongs to the output stage, not to the sound: like master volume it is not stored
   in patches (a patch file that contains it is accepted and the value ignored). Console:
-  `limiter on|off`.
+  `limiter on|off|reset`.
 
 ## Velocity, filter envelope and key tracking
 
@@ -468,7 +479,8 @@ An interactive console starts alongside the audio. Type `help`. Commands:
 | `lpfmode <voice\|master>` | filter placement |
 | `adsr <a> <d> <s> <r>` | amp envelope: attack, decay in s (0.001-5), sustain 0-1, release in s (0.001-10) |
 | `velocity <on\|off>` | off = every note plays at one fixed velocity |
-| `limiter <on\|off>` | auto limiter: turns the volume down when the signal would clip (default off) |
+| `limiter <on\|off>` | auto limiter: turns the volume down when the signal would clip and holds it there until silence or a patch change (default off) |
+| `limiter reset` | drop the limiter's held gain reduction |
 | `fltenv <-1..1>` | filter envelope amount (per-voice filter; default 0) |
 | `lfo <rate> <depth> [wave] [dest]` | LFO 1: 0.05-20 Hz, depth 0-1 (0 = off); wave sine\|triangle\|saw\|square\|random\|random-glide; dest pitch\|filter\|pwm\|amp\|lfo2-rate |
 | `lfo2 <rate> <depth> [wave] [dest]` | LFO 2, same arguments (default dest filter; dest also lfo1-rate) |

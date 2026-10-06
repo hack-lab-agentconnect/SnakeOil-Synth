@@ -2,6 +2,7 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+import numpy as np
 import pytest
 
 pytest.importorskip("PySide6")
@@ -49,6 +50,15 @@ def test_window_without_patch_store_has_no_patch_ui(qapp, tmp_path):
     router = MidiRouter(registry, profiles.open_active())
     window = MainWindow(engine, registry, router, profiles, [], Bridge(registry, router))
     assert window.patch_box is None
+
+
+def test_gui_patch_load_resets_held_limiter(rig):
+    engine, registry, _, window = rig
+    registry.set("auto_limiter", True)
+    engine._run_limiter(np.full((2, 64), 2.0))
+    assert engine.limiter_reduction_db() > 0.0
+    window._load_patch("Init")
+    assert engine.limiter_reduction_db() == 0.0
 
 
 def test_combo_lists_init_and_selects_it(rig):
