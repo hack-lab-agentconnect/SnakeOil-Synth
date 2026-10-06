@@ -23,14 +23,15 @@ GROUP_POSITIONS = {
     "Filter": (1, 0, 1, 1),
     "Filter Env": (1, 1, 1, 1),
     "Amp Envelope": (1, 2, 1, 1),
-    "LFO": (1, 3, 1, 1),
-    "Glide": (1, 4, 1, 1),
+    "LFO 1": (1, 3, 1, 1),
+    "LFO 2": (1, 4, 1, 1),
     "Effects": (2, 0, 1, 3),
-    "Unison": (2, 3, 1, 2),
+    "Unison": (2, 3, 1, 1),
+    "Glide": (2, 4, 1, 1),
 }
 
 # Groups whose controls wrap onto a new row after this many columns.
-GROUP_COLUMNS = {"Oscillator 1": 3, "Filter": 3, "LFO": 2}
+GROUP_COLUMNS = {"Oscillator 1": 3, "Filter": 3, "LFO 1": 1, "LFO 2": 1}
 
 # Groups laid out as toggle "blocks": each toggle heads a block whose
 # dependent controls (Param.under) sit in a row beneath it.

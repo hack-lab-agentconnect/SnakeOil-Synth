@@ -25,7 +25,7 @@ toggleable effects chain.
   bypass), per voice or on the master bus, with a **filter envelope** (ADSR + amount),
   **key tracking** and **velocity-to-cutoff**.
 - **Amp envelope** (ADSR) per voice.
-- **LFO** (sine, triangle, saw, square, random) to pitch, filter, pulse width or volume,
+- Two **LFOs** (sine, triangle, saw, square, random) to pitch, filter, pulse width or volume,
   and **glide** (portamento, optionally legato only).
 - **Unison:** up to 12 stacked voices per note with detune and stereo spread.
 - **Stereo effects chain:** chorus, delay (with **ping-pong**, feedback, tone and
@@ -47,8 +47,10 @@ The groups sit on a grid:
 | | Col 1 | Col 2 | Col 3 | Col 4 | Col 5 |
 |---|---|---|---|---|---|
 | Row 1 | Oscillator 1 | Oscillator 2 | Modulation | Master (volume, velocity, level meter) | Tempo |
-| Row 2 | Filter (incl. env amount, key track, velocity) | Filter Env | Amp Envelope | LFO | Glide |
-| Row 3 | Effects (spans columns 1-3) | | | Unison (spans columns 4-5) | |
+| Row 2 | Filter (incl. env amount, key track, velocity) | Filter Env | Amp Envelope | LFO 1 | LFO 2 |
+| Row 3 | Effects (spans columns 1-3) | | | Unison | Glide |
+
+Each LFO group is a single column: Rate, Depth, Wave and Dest from top to bottom.
 
 In *Effects* every toggle (Chorus, Delay, Reverb, Bitcrush) heads a block with its dials in
 a row beneath it: Chorus has Depth; Delay has Time, Ping-pong, Feedback, Tone, Sync and
@@ -216,13 +218,19 @@ per-voice filter only; with *Master-bus filter* on they are ignored. A cutoff pu
 
 ## LFO and glide
 
-- **LFO** (*LFO* group): one global low-frequency oscillator shared by all voices.
+- **LFO 1 and LFO 2** (*LFO 1* and *LFO 2* groups): two global low-frequency oscillators
+  shared by all voices, with identical controls. Each has its own
   *Rate* 0.05-20 Hz, *Depth* 0-1 (default 0 = off, the LFO does no work at all),
   *Wave* sine, triangle, saw, square or random (sample and hold, one new value per cycle),
   *Dest* pitch, filter, pwm or amp. At full depth the destinations move: pitch by up to
   +/-2 semitones, filter cutoff by +/-3 octaves, pulse width of both oscillators by
   +/-0.25 (clamped to 0-0.5), and volume as tremolo from full level down to silence.
-  The pitch-bend wheel is unaffected. Console: `lfo <rate> <depth> [wave] [dest]`.
+  LFO 2 defaults to depth 0 (off) and destination filter; its random wave differs from
+  LFO 1's. When both LFOs target the same destination they combine: pitch (semitones),
+  filter (octaves) and pulse-width offsets add, and volume gains multiply. An LFO at
+  depth 0 does no work, and with both off nothing is modulated.
+  The pitch-bend wheel is unaffected. Console: `lfo <rate> <depth> [wave] [dest]` and
+  `lfo2 <rate> <depth> [wave] [dest]`.
 - **Glide** (*Glide* group): *Time* 0-2 s (default 0 = off) slides each new note from the
   previous note's pitch (straight line in semitones). *Legato only* glides only when
   another key is still held when the new note starts. Console: `glide <seconds>`.
@@ -339,7 +347,8 @@ An interactive console starts alongside the audio. Type `help`. Commands:
 | `adsr <a> <d> <s> <r>` | amp envelope: attack, decay in s (0.001-5), sustain 0-1, release in s (0.001-10) |
 | `velocity <on\|off>` | off = every note plays at one fixed velocity |
 | `fltenv <-1..1>` | filter envelope amount (per-voice filter; default 0) |
-| `lfo <rate> <depth> [wave] [dest]` | LFO 0.05-20 Hz, depth 0-1 (0 = off); wave sine\|triangle\|saw\|square\|random; dest pitch\|filter\|pwm\|amp |
+| `lfo <rate> <depth> [wave] [dest]` | LFO 1: 0.05-20 Hz, depth 0-1 (0 = off); wave sine\|triangle\|saw\|square\|random; dest pitch\|filter\|pwm\|amp |
+| `lfo2 <rate> <depth> [wave] [dest]` | LFO 2, same arguments (default dest filter) |
 | `glide <seconds>` | slide between notes, 0-2 s (0 = off) |
 | `unison <1-12> [detune_cents] [spread]` | stack voices per note (polyphony = 12 // width); detune 0-50 cents, spread 0-1 |
 | `tempo <40-240>` | manual tempo in BPM (used when no MIDI clock arrives) |

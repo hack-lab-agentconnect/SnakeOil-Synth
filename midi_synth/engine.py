@@ -103,6 +103,10 @@ class SynthEngine:
             "lfo_depth": 0.0,
             "lfo_wave": "sine",
             "lfo_dest": "pitch",
+            "lfo2_rate": DEFAULT_LFO_RATE,
+            "lfo2_depth": 0.0,
+            "lfo2_wave": "sine",
+            "lfo2_dest": "filter",
             "glide_time": 0.0,
             "glide_legato": False,
             "unison_voices": 1,
@@ -117,6 +121,7 @@ class SynthEngine:
             "lfo_amp": None,
         }
         self.lfo = LFO()
+        self.lfo2 = LFO(seed=2)
         self.tempo = TempoTracker()
         self.delay_manual_ms = self.effects.delay.time_ms
         self._last_freq = None
@@ -307,6 +312,29 @@ class SynthEngine:
             raise ValueError("unknown LFO destination: %r (choose from %s)" % (dest, ", ".join(LFO_DESTS)))
         with self.lock:
             self.params["lfo_dest"] = dest
+            self._clear_lfo_mod()
+            return dest
+
+    def set_lfo2_rate(self, hz):
+        self._set_unit("lfo2_rate", hz, LFO_RATE_MIN, LFO_RATE_MAX)
+
+    def set_lfo2_depth(self, depth):
+        with self.lock:
+            self.params["lfo2_depth"] = min(max(float(depth), 0.0), 1.0)
+            self._clear_lfo_mod()
+
+    def set_lfo2_wave(self, wave):
+        if wave not in LFO_WAVES:
+            raise ValueError("unknown LFO wave: %r (choose from %s)" % (wave, ", ".join(LFO_WAVES)))
+        with self.lock:
+            self.params["lfo2_wave"] = wave
+            return wave
+
+    def set_lfo2_dest(self, dest):
+        if dest not in LFO_DESTS:
+            raise ValueError("unknown LFO destination: %r (choose from %s)" % (dest, ", ".join(LFO_DESTS)))
+        with self.lock:
+            self.params["lfo2_dest"] = dest
             self._clear_lfo_mod()
             return dest
 
@@ -541,24 +569,37 @@ class SynthEngine:
             return fx.enabled
 
     def _run_lfo(self, n):
-        """Advance the LFO one block and publish its per-block modulation.
+        """Advance each active LFO one block and publish the combined modulation.
 
-        Returns True when the destination is the filter.
+        Pitch ratios multiply, filter octaves and pulse-width offsets add, and
+        amp gains multiply. The first LFO to hit a destination assigns its
+        value directly so a lone LFO adds no extra arithmetic.
+        Returns True when an active LFO targets the filter.
         """
         p = self.params
-        dest = p["lfo_dest"]
-        depth = p["lfo_depth"]
-        mid, arr = self.lfo.next_block(
-            n, self.sr, p["lfo_rate"], p["lfo_wave"], want_array=dest == "amp")
-        if dest == "pitch":
-            p["lfo_pitch_ratio"] = 2.0 ** (depth * LFO_PITCH_SEMITONES * mid / 12.0)
-        elif dest == "filter":
-            p["lfo_filter_oct"] = depth * LFO_FILTER_OCTAVES * mid
-        elif dest == "pwm":
-            p["lfo_pwm"] = depth * LFO_PWM_RANGE * mid
-        else:
-            p["lfo_amp"] = 1.0 - depth * (0.5 - 0.5 * arr)
-        return dest == "filter"
+        seen = set()
+        for lfo, pre in ((self.lfo, "lfo"), (self.lfo2, "lfo2")):
+            depth = p[pre + "_depth"]
+            if not depth > 0.0:
+                continue
+            dest = p[pre + "_dest"]
+            mid, arr = lfo.next_block(
+                n, self.sr, p[pre + "_rate"], p[pre + "_wave"], want_array=dest == "amp")
+            first = dest not in seen
+            seen.add(dest)
+            if dest == "pitch":
+                ratio = 2.0 ** (depth * LFO_PITCH_SEMITONES * mid / 12.0)
+                p["lfo_pitch_ratio"] = ratio if first else p["lfo_pitch_ratio"] * ratio
+            elif dest == "filter":
+                octs = depth * LFO_FILTER_OCTAVES * mid
+                p["lfo_filter_oct"] = octs if first else p["lfo_filter_oct"] + octs
+            elif dest == "pwm":
+                off = depth * LFO_PWM_RANGE * mid
+                p["lfo_pwm"] = off if first else p["lfo_pwm"] + off
+            else:
+                gain = 1.0 - depth * (0.5 - 0.5 * arr)
+                p["lfo_amp"] = gain if first else p["lfo_amp"] * gain
+        return "filter" in seen
 
     def _master_lfo_coeffs(self):
         p = self.params
@@ -577,7 +618,7 @@ class SynthEngine:
             if params["delay_sync"]:
                 self._sync_delay()
             lfo_filter = False
-            if params["lfo_depth"] > 0.0:
+            if params["lfo_depth"] > 0.0 or params["lfo2_depth"] > 0.0:
                 lfo_filter = self._run_lfo(n)
             panned = []
             stereo = False
@@ -676,6 +717,10 @@ class SynthEngine:
                 "lfo_depth": self.params["lfo_depth"],
                 "lfo_wave": self.params["lfo_wave"],
                 "lfo_dest": self.params["lfo_dest"],
+                "lfo2_rate": self.params["lfo2_rate"],
+                "lfo2_depth": self.params["lfo2_depth"],
+                "lfo2_wave": self.params["lfo2_wave"],
+                "lfo2_dest": self.params["lfo2_dest"],
                 "glide_time": self.params["glide_time"],
                 "glide_legato": self.params["glide_legato"],
                 "unison_voices": self.params["unison_voices"],

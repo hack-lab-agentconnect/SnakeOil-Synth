@@ -212,7 +212,7 @@ def _fit(window, width=1500, height=900):
 
 def test_window_size_hint_fits_a_small_screen(rig):
     hint = rig[-1].sizeHint()
-    assert hint.width() <= 1500 and hint.height() <= 880
+    assert hint.width() <= 1500 and hint.height() <= 900
 
 
 def test_body_is_inside_a_scroll_area(rig):

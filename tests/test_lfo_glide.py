@@ -122,16 +122,16 @@ def test_registry_params():
     reg = build_registry(e)
     r = reg["lfo_rate"]
     assert (r.kind, r.group, r.label, r.scale, r.fmt) == (
-        CONTINUOUS, "LFO", "Rate", "log", "{:.2f} Hz")
+        CONTINUOUS, "LFO 1", "Rate", "log", "{:.2f} Hz")
     assert (r.minimum, r.maximum) == (0.05, 20.0) and reg.get("lfo_rate") == 5.0
     d = reg["lfo_depth"]
     assert (d.kind, d.group, d.label, d.minimum, d.maximum) == (
-        CONTINUOUS, "LFO", "Depth", 0.0, 1.0) and reg.get("lfo_depth") == 0.0
+        CONTINUOUS, "LFO 1", "Depth", 0.0, 1.0) and reg.get("lfo_depth") == 0.0
     w = reg["lfo_wave"]
-    assert (w.kind, w.group, w.label, w.choices) == (CHOICE, "LFO", "Wave", WAVES)
+    assert (w.kind, w.group, w.label, w.choices) == (CHOICE, "LFO 1", "Wave", WAVES)
     assert reg.get("lfo_wave") == "sine"
     t = reg["lfo_dest"]
-    assert (t.kind, t.group, t.label, t.choices) == (CHOICE, "LFO", "Dest", DESTS)
+    assert (t.kind, t.group, t.label, t.choices) == (CHOICE, "LFO 1", "Dest", DESTS)
     assert reg.get("lfo_dest") == "pitch"
     g = reg["glide_time"]
     assert (g.kind, g.group, g.label, g.scale, g.fmt, g.minimum, g.maximum) == (
@@ -436,8 +436,8 @@ def test_gui_has_lfo_and_glide_groups(tmp_path):
     store = ProfileStore(tmp_path / "cfg")
     router = MidiRouter(reg, store.open_active())
     window = MainWindow(e, reg, router, store, [], Bridge(reg, router))
-    assert "LFO" in GROUP_POSITIONS and "Glide" in GROUP_POSITIONS
+    assert "LFO 1" in GROUP_POSITIONS and "Glide" in GROUP_POSITIONS
     assert set(window.controls) == set(reg.ids())
     titles = {b.title() for b in window.findChildren(QGroupBox)}
-    assert {"LFO", "Glide"} <= titles
+    assert {"LFO 1", "LFO 2", "Glide"} <= titles
     window.close()

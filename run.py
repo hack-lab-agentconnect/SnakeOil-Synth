@@ -152,6 +152,7 @@ HELP_TEXT = """commands:
   lfo <rate> <depth> [wave] [dest]  LFO: 0.05-20 Hz, depth 0-1 (0 = off),
                              wave sine|triangle|saw|square|random,
                              dest pitch|filter|pwm|amp
+  lfo2 <rate> <depth> [wave] [dest]  second LFO, same arguments (default dest filter)
   glide <seconds>            slide between notes, 0-2 s (0 = off)
   unison <1-12> [detune_cents] [spread]  stack voices per note (polyphony = 12 // width);
                              detune 0-50 cents, spread 0-1
@@ -386,6 +387,16 @@ def console_loop(engine, registry=None, patch_store=None, patch_defaults=None,
                     engine.set_lfo_dest(parts[4].lower())
                 engine.set_lfo_rate(rate)
                 engine.set_lfo_depth(depth)
+            elif cmd == "lfo2":
+                if len(parts) < 3 or len(parts) > 5:
+                    raise ValueError("lfo2 takes rate depth [wave] [dest]")
+                rate, depth = float(parts[1]), float(parts[2])
+                if len(parts) > 3:
+                    engine.set_lfo2_wave(parts[3].lower())
+                if len(parts) > 4:
+                    engine.set_lfo2_dest(parts[4].lower())
+                engine.set_lfo2_rate(rate)
+                engine.set_lfo2_depth(depth)
             elif cmd == "glide":
                 engine.set_glide_time(float(parts[1]))
             elif cmd == "unison":
