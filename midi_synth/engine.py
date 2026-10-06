@@ -3,6 +3,7 @@ import threading
 import numpy as np
 
 from .config import (
+    CLIP_THRESHOLD,
     SAMPLE_RATE,
     BLOCK_SIZE,
     MAX_VOICES,
@@ -59,6 +60,8 @@ class SynthEngine:
         self.block_size = block_size
         self.max_voices = max_voices
         self.lock = threading.RLock()
+        self._meter_post = np.zeros(2)
+        self._meter_clip = False
         self.voices = [Voice(sr) for _ in range(max_voices)]
         self.effects = EffectChain(sr)
         self.master_lpf = LowPass(sr)
@@ -612,8 +615,27 @@ class SynthEngine:
                 out = np.vstack([mix, mix])
             if apply_effects:
                 out = self.effects.process(out)
-            out = np.tanh(out * params["master_gain"])
+            driven = out * params["master_gain"]
+            out = np.tanh(driven)
+            self._meter_post = np.maximum(self._meter_post, np.abs(out).max(axis=1))
+            if np.abs(driven).max() >= CLIP_THRESHOLD:
+                self._meter_clip = True
             return np.ascontiguousarray(out.T).astype(np.float32)
+
+    def peek_meter(self):
+        """Return (left, right, clipped) without resetting the meter."""
+        with self.lock:
+            return (float(self._meter_post[0]), float(self._meter_post[1]),
+                    bool(self._meter_clip))
+
+    def take_meter(self):
+        """Return linear post-clipper peaks and the clip flag since the last call, then reset."""
+        with self.lock:
+            result = (float(self._meter_post[0]), float(self._meter_post[1]),
+                      bool(self._meter_clip))
+            self._meter_post = np.zeros(2)
+            self._meter_clip = False
+            return result
 
     def status(self):
         with self.lock:

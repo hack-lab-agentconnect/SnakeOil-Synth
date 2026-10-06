@@ -46,7 +46,7 @@ The groups sit on a grid:
 
 | | Col 1 | Col 2 | Col 3 | Col 4 | Col 5 |
 |---|---|---|---|---|---|
-| Row 1 | Oscillator 1 | Oscillator 2 | Modulation | Master (volume, velocity) | Tempo |
+| Row 1 | Oscillator 1 | Oscillator 2 | Modulation | Master (volume, velocity, level meter) | Tempo |
 | Row 2 | Filter (incl. env amount, key track, velocity) | Filter Env | Amp Envelope | LFO | Glide |
 | Row 3 | Effects (spans columns 1-3) | | | Unison (spans columns 4-5) | |
 
@@ -180,6 +180,21 @@ Changes apply to notes that are already sounding as well as to new notes. Double
 a slider to restore its default. The console command `adsr <attack_s> <decay_s> <sustain>
 <release_s>` sets all four at once (out-of-range values are clamped). The sliders have no
 default MIDI CC; assign them with MIDI learn.
+
+## Level meter
+
+The *Master* group has a stereo output meter beside the Volume knob. It shows the left and
+right peak level after the soft clipper on a dBFS scale from -60 dB (bottom) to 0 dB (top):
+green below -12 dB, yellow from -12 to -3 dB, red above -3 dB. The bars rise at once and
+fall at about 24 dB per second. A thin marker on each bar holds the highest recent peak for
+one second and then falls at about 12 dB per second until it meets the bar.
+
+The **CLIP** light above the bars comes on when the signal entering the soft clipper
+(after master volume) reaches full scale, so the clipper is compressing hard and the sound
+is being distorted. It stays lit for two seconds after the last clip; click the meter to
+clear it at once. If it lights often, turn the master volume down, or play fewer voices or
+lower the oscillator and effect levels. The meter only watches the audio; it does not change
+the sound.
 
 ## Velocity, filter envelope and key tracking
 
@@ -408,7 +423,7 @@ per voice (up to 12, shared with unison):
                                          filter envelope, key tracking, velocity, LFO
 
 all voices ─▶ sum (left/right) ─▶ low-pass* ─▶ chorus ─▶ delay ─▶ reverb ─▶ bitcrush
-           ─▶ master gain ─▶ soft clip (tanh) ─▶ out
+           ─▶ master gain ─▶ soft clip (tanh) ─▶ out  (level meter reads here)
 ```
 
 \* The low-pass filter runs in one of two places: per voice before the amp envelope (the
