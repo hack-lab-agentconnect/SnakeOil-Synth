@@ -405,6 +405,6 @@ def test_gui_unison_group(tmp_path):
     assert len(set(cells)) == len(cells)
     for pid in ("unison_voices", "unison_detune", "unison_spread"):
         assert pid in window.controls
-    assert set(window.controls) == {p.id for p in reg if p.group != "Mod Matrix"}
+    assert set(window.controls) == {p.id for p in reg}
     assert "Unison" in {b.title() for b in window.findChildren(QGroupBox)}
     window.close()

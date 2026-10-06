@@ -299,7 +299,7 @@ def test_window_hint_and_group_positions(window):
     assert MERGED_GROUPS == {"LFO 1": ("LFO", 0), "LFO 2": ("LFO", 1)}
     assert "LFO" in GROUP_POSITIONS and "LFO 1" not in GROUP_POSITIONS
     hint = window.sizeHint()
-    assert hint.width() <= 1500 and hint.height() <= 900
+    assert hint.width() <= 1700 and hint.height() <= 900
     cells = set()
     for r, c, rs, cs in GROUP_POSITIONS.values():
         for rr in range(r, r + rs):

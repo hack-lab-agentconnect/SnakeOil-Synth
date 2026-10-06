@@ -14,6 +14,10 @@ from .controls import ParamControl
 from .meter import LevelMeter
 from .qwerty import QwertyKeyboard
 
+# Grid cell (row, column, rowspan, colspan) freed by the LFO merge, holding
+# the Mod Matrix group.
+MOD_MATRIX_CELL = (1, 4, 1, 1)
+
 GROUP_POSITIONS = {
     "Oscillator 1": (0, 0, 1, 1),
     "Oscillator 2": (0, 1, 1, 1),
@@ -28,9 +32,10 @@ GROUP_POSITIONS = {
     "Unison": (2, 3, 1, 1),
     "Glide": (2, 4, 1, 1),
 }
+GROUP_POSITIONS["Mod Matrix"] = MOD_MATRIX_CELL
 
-# Registry groups with no widgets yet (the matrix window arrives separately).
-HIDDEN_GROUPS = ("Mod Matrix",)
+# Registry groups kept out of the generic body (none at present).
+HIDDEN_GROUPS = ()
 
 # Groups whose controls wrap onto a new row after this many columns.
 GROUP_COLUMNS = {"Oscillator 1": 3, "Filter": 3}
@@ -41,14 +46,16 @@ GROUP_COLUMNS = {"Oscillator 1": 3, "Filter": 3}
 # original group names.
 MERGED_GROUPS = {"LFO 1": ("LFO", 0), "LFO 2": ("LFO", 1)}
 
-# Grid cell (row, column, rowspan, colspan) freed by the LFO merge, reserved
-# for the Mod Matrix group.
-MOD_MATRIX_CELL = (1, 4, 1, 1)
-
 # Groups laid out as toggle "blocks": each toggle heads a block whose
 # dependent controls (Param.under) sit in a row beneath it.
 BLOCK_GROUPS = ("Effects",)
 BLOCK_MAX_COLUMNS = 6
+
+# Mod Matrix columns, left to right: registry param suffix -> column header.
+MATRIX_COLUMNS = (("src", "Source"), ("amt", "Scale"), ("dst", "Destination"))
+MATRIX_TOOLTIP = ("Scale is relative: the destination's current value x "
+                  "(1 + scale x source). A destination whose current value is 0 "
+                  "stays 0.")
 
 STACK_COMBO_CHARS = 9
 MIN_WINDOW_SIZE = (640, 420)
@@ -202,6 +209,21 @@ class MainWindow(QMainWindow):
         cells[param.id] = (row, col)
         box.layout().addWidget(control, row, col, 1, span)
 
+    def _place_matrix(self, box, param, control):
+        """Place a Mod Matrix control: row from its id, column from its suffix."""
+        layout = box.layout()
+        if layout.itemAtPosition(0, 0) is None:
+            box.setToolTip(MATRIX_TOOLTIP)
+            for col, (_suffix, text) in enumerate(MATRIX_COLUMNS):
+                header = QLabel(text)
+                header.setAlignment(Qt.AlignHCenter)
+                header.setToolTip(MATRIX_TOOLTIP)
+                layout.addWidget(header, 0, col)
+            layout.setColumnStretch(1, 1)
+        head, suffix = param.id.split("_")
+        col = [s for s, _ in MATRIX_COLUMNS].index(suffix)
+        layout.addWidget(control, int(head[3:]), col)
+
     def _build_body(self):
         groups = {}
         columns = {}
@@ -217,11 +239,15 @@ class MainWindow(QMainWindow):
                 box = QGroupBox(title)
                 box.setLayout(QGridLayout())
                 groups[title] = box
-            control = ParamControl(self.registry, param)
+            matrix = param.group == "Mod Matrix"
+            control = ParamControl(self.registry, param, compact=matrix)
             control.learnRequested.connect(self._on_learn_requested)
             control.clearRequested.connect(self._on_clear_requested)
             cells = columns.setdefault(param.group, {})
             self.controls[param.id] = control
+            if matrix:
+                self._place_matrix(box, param, control)
+                continue
             if stack is not None:
                 if param.group not in stack_rows:
                     header = QLabel(param.group)

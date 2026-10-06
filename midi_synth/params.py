@@ -351,7 +351,7 @@ def build_registry(engine):
                   tooltip="What drives matrix row %d." % i),
             Param(id="mod%d_amt" % i, label="Scale", group=group,
                   kind=CONTINUOUS, minimum=-1.0, maximum=1.0,
-                  formatter=format_percent,
+                  formatter=format_percent, widget="hslider",
                   get=lambda: row[1], set=lambda v: engine.set_mod_amt(i, v),
                   tooltip="Modulation relative to the destination's current "
                           "value: value x (1 + scale x source). A destination "

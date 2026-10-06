@@ -441,7 +441,7 @@ def test_gui_tempo_group_and_label(tmp_path):
     from PySide6.QtWidgets import QGroupBox
 
     engine, registry, window = make_window(tmp_path)
-    assert set(window.controls) == {p.id for p in registry if p.group != "Mod Matrix"}
+    assert set(window.controls) == {p.id for p in registry}
     box = next(b for b in window.findChildren(QGroupBox) if b.title() == "Tempo")
     assert window.controls["tempo_bpm"].parent() is box
     assert window.tempo_label.parent() is box

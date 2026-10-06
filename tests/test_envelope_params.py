@@ -62,7 +62,7 @@ def test_registry_ranges_scales_defaults(rig):
 
 def test_other_params_default_to_knob(rig):
     _, reg = rig
-    assert all(p.widget == "knob" for p in reg if p.group not in ("Amp Envelope", "Filter Env"))
+    assert all(p.widget == "knob" for p in reg if p.group not in ("Amp Envelope", "Filter Env", "Mod Matrix"))
 
 
 def test_set_reaches_engine_and_every_voice(rig):

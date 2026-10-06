@@ -47,11 +47,12 @@ The groups sit on a grid:
 | | Col 1 | Col 2 | Col 3 | Col 4 | Col 5 |
 |---|---|---|---|---|---|
 | Row 1 | Oscillator 1 | Oscillator 2 | Modulation | Master (volume, velocity, level meter) | Tempo |
-| Row 2 | Filter (incl. env amount, key track, velocity) | Filter Env | Amp Envelope | LFO (LFO 1 and LFO 2 side by side) | *(free)* |
+| Row 2 | Filter (incl. env amount, key track, velocity) | Filter Env | Amp Envelope | LFO (LFO 1 and LFO 2 side by side) | Mod Matrix |
 | Row 3 | Effects (spans columns 1-3) | | | Unison | Glide |
 
 The *LFO* box holds two vertical stacks side by side, *LFO 1* and *LFO 2*, each with Rate, Depth, Wave
-and Dest from top to bottom under its header. The cell to its right (row 2, column 5) is free.
+and Dest from top to bottom under its header. The *Mod Matrix* box (row 2, column 5) is described
+under [Mod Matrix](#mod-matrix).
 
 In *Effects* every toggle (Chorus, Delay, Reverb, Bitcrush) heads a block with its dials in
 a row beneath it: Chorus has Depth; Delay has Time, Ping-pong, Feedback, Tone, Sync and
@@ -256,8 +257,17 @@ Eight rows, each `Source | Scale | Destination`, all registry params
 (`mod1_src` .. `mod8_dst`, group "Mod Matrix") so patches and MIDI learn cover
 them. The factory matrix is empty and an empty matrix (or rows with source or
 destination `none`, or scale 0) costs nothing and leaves the sound untouched.
-The matrix window is not built yet, so the group is hidden in the GUI for now;
-use the console `mod` command.
+In the window the *Mod Matrix* box is a small table: a header (*Source*, *Scale*,
+*Destination*) and eight rows `[source | scale slider | destination]`. The source is a
+plain drop-down. *Scale* is a horizontal bipolar slider (-100% .. +100%, centre = 0, the
+filled bar grows from the centre toward the handle, the value such as `+37%` is drawn on
+it); double-click it to reset to 0. The destination drop-down groups its entries under
+non-selectable headers (*Osc 1*, *Osc 2*, *Filter*); entries without a group such as
+*Modulation Amount* sit at the top level, and `none` comes first. Every control in the box
+supports MIDI learn like the rest of the window (in learn mode click a scale slider, then
+move a controller; or right-click for *MIDI Learn* / *Clear binding*); the binding is shown
+in the control's tooltip and an armed control gets the orange highlight. Hover the box
+for the scale rule below. The console `mod` command still works too.
 
 Sources:
 

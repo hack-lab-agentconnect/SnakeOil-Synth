@@ -266,12 +266,15 @@ def test_single_lfo_box_with_two_stacks(window):
         assert hp.x() <= stacks[i][0].x() + 20
 
 
-def test_matrix_cell_is_free_and_hint_fits(window):
+def test_matrix_cell_is_its_own_and_hint_fits(window):
     from midi_synth.gui.main_window import GROUP_POSITIONS, MOD_MATRIX_CELL
     assert MOD_MATRIX_CELL == (1, 4, 1, 1)
     assert GROUP_POSITIONS["LFO"] == (1, 3, 1, 1)
+    assert GROUP_POSITIONS["Mod Matrix"] == MOD_MATRIX_CELL
     r, c, rs, cs = MOD_MATRIX_CELL
-    for rr, cc, rrs, ccs in GROUP_POSITIONS.values():
+    for name, (rr, cc, rrs, ccs) in GROUP_POSITIONS.items():
+        if name == "Mod Matrix":
+            continue
         assert not (rr < r + rs and r < rr + rrs and cc < c + cs and c < cc + ccs)
     hint = window.sizeHint()
-    assert hint.width() <= 1500 and hint.height() <= 900
+    assert hint.width() <= 1700 and hint.height() <= 900
