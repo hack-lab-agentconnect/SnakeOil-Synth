@@ -3,7 +3,7 @@ import math
 import numpy as np
 
 from . import noise
-from .config import DEFAULT_SQUARE_LEVEL, FLT_ENV_OCTAVES, FLT_VEL_OCTAVES
+from .config import DEFAULT_SQUARE_LEVEL, FORCED_RELEASE_S, FLT_ENV_OCTAVES, FLT_VEL_OCTAVES
 from .filters import (
     LADDER_OSC_LEVEL, LADDER_OSC_START, LPF_MAX_HZ, LPF_MIN_HZ, LowPass,
     filter_coefficients,
@@ -18,6 +18,7 @@ class Envelope:
         self.set_shape(attack, decay, sustain, release)
         self.stage = IDLE
         self.level = 0.0
+        self.release_override = None
 
     def set_shape(self, attack, decay, sustain, release):
         self.attack = max(attack, 1.0 / self.sr)
@@ -27,12 +28,17 @@ class Envelope:
 
     def note_on(self, keep_level=False):
         self.stage = ATTACK
+        self.release_override = None
         if self.level >= 1.0 and not keep_level:
             self.level = 0.0
 
-    def note_off(self):
+    def note_off(self, release_s=None):
+        """Start the release; ``release_s`` overrides the release time until
+        the envelope restarts or goes idle."""
         if self.stage != IDLE:
             self.stage = RELEASE
+            if release_s is not None:
+                self.release_override = max(release_s, 1.0 / self.sr)
 
     @property
     def active(self):
@@ -49,7 +55,8 @@ class Envelope:
         out = np.empty(n, dtype=np.float64)
         att_inc = 1.0 / (self.attack * self.sr)
         dec_inc = (1.0 - self.sustain) / (self.decay * self.sr)
-        rel_inc = 1.0 / (self.release * self.sr)
+        release = self.release if self.release_override is None else self.release_override
+        rel_inc = 1.0 / (release * self.sr)
         level = self.level
         stage = self.stage
         sustain = self.sustain
@@ -79,6 +86,8 @@ class Envelope:
                 out[pos + k] = target
                 level = target
                 stage = nxt
+                if nxt == IDLE:
+                    self.release_override = None
                 pos += k + 1
             else:
                 out[pos:] = seg
@@ -174,6 +183,12 @@ class Voice:
     def note_off(self):
         self.gate = False
         self.env.note_off()
+        self.flt_env.note_off()
+
+    def force_release(self, seconds=FORCED_RELEASE_S):
+        """Release quickly (a short linear fade) instead of cutting the voice."""
+        self.gate = False
+        self.env.note_off(release_s=seconds)
         self.flt_env.note_off()
 
     def _voice_coeffs(self, n, params):

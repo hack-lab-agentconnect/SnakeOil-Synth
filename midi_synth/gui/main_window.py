@@ -83,6 +83,12 @@ class _BodyScroll(QScrollArea):
 CPU_WARN_PEAK = 0.8
 
 
+TAIL_TOOLTIP = (
+    "Released notes still ringing / tail slots. Unused playable voices are "
+    "shared, so the count can exceed the slots when fewer keys are held. "
+    "Click to switch between 6 and 12 tail slots.")
+
+
 class MainWindow(QMainWindow):
     def __init__(self, engine, registry, router, store, midi_ports, bridge,
                  patch_store=None, patch_defaults=None, recorder=None,
@@ -344,6 +350,9 @@ class MainWindow(QMainWindow):
         self.port_label = QLabel("MIDI: " + (", ".join(midi_ports) or "none"))
         self.msg_label = QLabel("Last MIDI: –")
         self.voice_label = QLabel("Voices: 0/%d" % self.engine.max_voices)
+        self.tail_label = ClickableLabel("Tails off", self._cycle_tail_slots)
+        self.tail_label.setProperty("level", "ok")
+        self.tail_label.setToolTip(TAIL_TOOLTIP)
         self.cpu_label = None
         if self.callback_state is not None:
             self.cpu_label = QLabel("CPU 0%  peak 0%  xruns 0")
@@ -354,7 +363,7 @@ class MainWindow(QMainWindow):
         self.qwerty_label = QLabel(self.qwerty.status_text())
         self.rec_label = QLabel("")
         for label in (self.port_label, self.msg_label, self.voice_label,
-                      self.cpu_label, self.qwerty_label, self.rec_label):
+                      self.tail_label, self.cpu_label, self.qwerty_label, self.rec_label):
             if label is not None:
                 bar.addPermanentWidget(label)
         app = QApplication.instance()
@@ -632,12 +641,39 @@ class MainWindow(QMainWindow):
         else:
             self.tempo_label.setText("%.0f BPM (manual)" % self.engine.params["tempo_bpm"])
 
+    def _cycle_tail_slots(self):
+        slots = self.engine.tail_slots
+        self.engine.set_tail_slots(12 if 0 < slots < 12 else 6)
+        self._update_voice_labels()
+
+    def _update_voice_labels(self):
+        engine = self.engine
+        slots = engine.tail_slots
+        if slots > 0:
+            tails = engine.tail_count()
+            self.voice_label.setText(
+                "Voices %d/%d" % (engine.gated_count(), engine.max_voices))
+            self.voice_label.setToolTip(
+                "%d voices stolen, %d forced releases so far"
+                % (engine.steal_count, engine.forced_releases))
+            self.tail_label.setText("Tails %d/%d" % (tails, slots))
+            level = "warn" if tails >= slots else "ok"
+        else:
+            self.voice_label.setText(
+                "Voices: %d/%d" % (engine.active_note_count(), engine.max_voices))
+            self.voice_label.setToolTip(
+                "%d voices stolen so far" % engine.steal_count)
+            self.tail_label.setText("Tails off")
+            level = "ok"
+        if self.tail_label.property("level") != level:
+            self.tail_label.setProperty("level", level)
+            style = self.tail_label.style()
+            style.unpolish(self.tail_label)
+            style.polish(self.tail_label)
+
     def _tick(self):
         self._update_tempo_label()
-        self.voice_label.setText(
-            "Voices: %d/%d" % (self.engine.active_note_count(), self.engine.max_voices))
-        self.voice_label.setToolTip(
-            "%d voices stolen so far" % self.engine.steal_count)
+        self._update_voice_labels()
         self._update_cpu_label()
         if self.recorder is not None and self.recorder.active:
             self.rec_label.setText("REC %02d:%02d" % divmod(int(self.recorder.elapsed), 60))

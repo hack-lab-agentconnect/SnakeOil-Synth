@@ -94,18 +94,26 @@ def _victim_key(group):
 
 
 class SynthEngine:
-    def __init__(self, sr=SAMPLE_RATE, block_size=BLOCK_SIZE, max_voices=MAX_VOICES):
+    def __init__(self, sr=SAMPLE_RATE, block_size=BLOCK_SIZE, max_voices=MAX_VOICES,
+                 tail_slots=0, tail_capacity=None):
+        """``max_voices`` is the number of playable (held) voices. The pool
+        also has ``tail_capacity`` extra voices for released tails (default:
+        ``tail_slots``), of which ``tail_slots`` are in use."""
         self.sr = sr
         self.block_size = block_size
         self.max_voices = max_voices
+        capacity = max(int(tail_slots if tail_capacity is None else tail_capacity), 0)
+        self.tail_capacity = capacity
+        self.tail_slots = min(max(int(tail_slots), 0), capacity)
         self.steal_count = 0
+        self.forced_releases = 0
         self.lock = threading.RLock()
         self._meter_post = np.zeros(2)
         self._meter_clip = False
         self._limiter = Limiter(sr)
         self._limiter_silent_s = 0.0
         self.last_driven_peak = 0.0
-        self.voices = [Voice(sr) for _ in range(max_voices)]
+        self.voices = [Voice(sr) for _ in range(max_voices + capacity)]
         self.effects = EffectChain(sr)
         self.master_lpf = LowPass(sr)
         self.master_lpf_r = LowPass(sr)
@@ -815,22 +823,32 @@ class SynthEngine:
             self._mod_apply(view, d.param_id, self._mod_eff(d, terms, vals, nv))
         return view
 
+    def _classic_pool(self):
+        """The voices classic allocation may use (the playable ones only)."""
+        if len(self.voices) == self.max_voices:
+            return self.voices
+        return self.voices[:self.max_voices]
+
     def _allocate_voice(self):
-        for v in self.voices:
+        pool = self._classic_pool()
+        for v in pool:
             if not v.active:
                 return v
-        released = [v for v in self.voices if not v.gate]
+        released = [v for v in pool if not v.gate]
         if released:
             return min(released, key=lambda v: (v.env.level, v.trigger_order))
-        return min(self.voices, key=lambda v: v.trigger_order)
+        return min(pool, key=lambda v: v.trigger_order)
 
     def _allocate_group(self, count):
         """Pick ``count`` voices: idle ones first, then whole stolen groups."""
-        chosen = [v for v in self.voices if not v.active][:count]
+        if self.tail_slots > 0:
+            return self._allocate_hybrid(count)
+        pool = self._classic_pool()
+        chosen = [v for v in pool if not v.active][:count]
         if len(chosen) >= count:
             return chosen
         groups = {}
-        for i, v in enumerate(self.voices):
+        for i, v in enumerate(pool):
             if v.active:
                 key = v.group if v.group is not None else ("single", i)
                 groups.setdefault(key, []).append(v)
@@ -841,6 +859,58 @@ class SynthEngine:
             chosen.extend(g)
             if len(chosen) >= count:
                 break
+        return chosen
+
+    def _voice_groups(self, voices, per_voice=False):
+        groups = {}
+        for i, v in enumerate(voices):
+            if per_voice or v.group is None:
+                key = ("single", id(v))
+            else:
+                key = v.group
+            groups.setdefault(key, []).append(v)
+        return list(groups.values())
+
+    def _force_release_for(self, count):
+        """Force-release the oldest held groups until ``count`` more fit."""
+        forced = []
+        while True:
+            held = [v for v in self.voices if v.gate]
+            if len(held) + count <= self.max_voices or not held:
+                return forced
+            oldest = min(self._voice_groups(held),
+                         key=lambda g: min(v.trigger_order for v in g))
+            for v in oldest:
+                v.force_release()
+            forced.extend(oldest)
+            self.forced_releases += len(oldest)
+
+    def _allocate_hybrid(self, count):
+        """Hybrid allocation: free voices first, steal only released tails."""
+        forced = self._force_release_for(count)
+        voices = self.voices
+        active = sum(1 for v in voices if v.active)
+        room = max(self.max_voices + self.tail_slots - active, 0)
+        chosen = [v for v in voices if not v.active][:min(room, count)]
+        if len(chosen) >= count:
+            return chosen
+        skip = {id(v) for v in forced}
+        per_voice = count == 1
+
+        def victims(pred):
+            cands = [v for v in voices if v.active and pred(v)]
+            return sorted(self._voice_groups(cands, per_voice), key=_victim_key)
+
+        tiers = (
+            victims(lambda v: not v.gate and id(v) not in skip),
+            victims(lambda v: id(v) in skip),
+            victims(lambda v: v.gate),
+        )
+        for tier in tiers:
+            for g in tier:
+                chosen.extend(g)
+                if len(chosen) >= count:
+                    return chosen
         return chosen
 
     def _note_on_unison(self, note, vel, count, glide_from, glide_time):
@@ -875,7 +945,10 @@ class SynthEngine:
             vel = velocity / 127.0 if self.params["velocity_on"] else FIXED_VELOCITY
             count = min(self.params["unison_voices"], self.max_voices)
             if count == 1:
-                voice = self._allocate_voice()
+                if self.tail_slots > 0:
+                    voice = self._allocate_hybrid(1)[0]
+                else:
+                    voice = self._allocate_voice()
             glide_time = self.params["glide_time"]
             glide_from = None
             if (glide_time > 0.0 and self._last_freq is not None
@@ -946,6 +1019,28 @@ class SynthEngine:
     def active_note_count(self):
         with self.lock:
             return sum(1 for v in self.voices if v.active)
+
+    def gated_count(self):
+        """Voices whose key is held (the playable ones in use)."""
+        with self.lock:
+            return sum(1 for v in self.voices if v.gate)
+
+    def tail_count(self):
+        """Released voices still ringing out."""
+        with self.lock:
+            return sum(1 for v in self.voices if v.active and not v.gate)
+
+    def set_tail_slots(self, n):
+        """Set the tail slots in use (clamped to the pool's capacity)."""
+        try:
+            count = int(n)
+            if isinstance(n, float) and n != count:
+                raise ValueError
+        except (TypeError, ValueError, OverflowError):
+            raise ValueError("tail slots must be a whole number, got %r" % (n,)) from None
+        with self.lock:
+            self.tail_slots = min(max(count, 0), self.tail_capacity)
+            return self.tail_slots
 
     def set_effect(self, name, enabled):
         with self.lock:
@@ -1325,4 +1420,8 @@ class SynthEngine:
                 "sustain": self.sustain,
                 "active_voices": sum(1 for v in self.voices if v.active),
                 "steal_count": self.steal_count,
+                "tail_slots": self.tail_slots,
+                "tails_active": sum(1 for v in self.voices if v.active and not v.gate),
+                "gated_voices": sum(1 for v in self.voices if v.gate),
+                "forced_releases": self.forced_releases,
             }

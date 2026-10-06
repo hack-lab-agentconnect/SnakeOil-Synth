@@ -2,6 +2,8 @@
 import argparse
 import time
 
+import numpy as np
+
 from midi_synth.engine import SynthEngine
 
 
@@ -111,14 +113,70 @@ def run(label, setup, sr, block, blocks):
     print("%-30s %7.2f ms  %4.0f%% of %.1f ms" % (label, ms, 100 * ms / budget, budget))
 
 
+def heavy(e):
+    e.set_unison_voices(2)
+    e.set_osc_level(2, 1.0)
+    e.set_lpf_slope("24 dB")
+    fx("chorus", "delay", "reverb", "bitcrush")(e)
+    e.set_auto_limiter(True)
+    e.set_amp_release(1.5)
+
+
+def pool_run(tails, sr, block, seconds=12.0, interval_s=0.116):
+    """Block times (ms) with the pool saturated: a new note every ``interval_s``,
+    five held, the oldest released, long release tails. ``tails`` = 0 is classic."""
+    engine = SynthEngine(sr=sr, block_size=block, max_voices=12,
+                         tail_slots=tails, tail_capacity=tails)
+    heavy(engine)
+    per = max(round(interval_s * sr / block), 1)
+    held = [48, 52, 55, 59, 62]
+    for note in held:
+        engine.note_on(note, 100)
+    times, active = [], []
+    for i in range(int(seconds * sr / block)):
+        if i % per == 0:
+            engine.note_off(held.pop(0))
+            note = 48 + (i // per * 7) % 24
+            held.append(note)
+            engine.note_on(note, 100)
+        start = time.perf_counter()
+        engine.render(block)
+        times.append((time.perf_counter() - start) * 1000)
+        active.append(engine.active_note_count())
+    skip = int(2.0 * sr / block)
+    return (np.array(times[skip:]), np.array(active[skip:]),
+            engine.steal_count, engine.forced_releases)
+
+
+def pools(sr, block):
+    budget = block / sr * 1000
+    print("")
+    print("Saturated pool, heavy patch (budget %.2f ms); load = share of budget" % budget)
+    print("%-6s %-6s %-9s %-8s %-8s %-8s %-7s %-7s"
+          % ("pool", "tails", "avg act.", "mean", "p99", "worst", "steals", "forced"))
+    for tails in (0, 6, 12):
+        times, active, steals, forced = pool_run(tails, sr, block)
+        print("%-6d %-6d %-9.1f %-8s %-8s %-8s %-7d %-7d" % (
+            12 + tails, tails, active.mean(),
+            "%.0f%%" % (100 * times.mean() / budget),
+            "%.0f%%" % (100 * np.percentile(times, 99) / budget),
+            "%.0f%%" % (100 * times.max() / budget), steals, forced))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--sr", type=int, default=48000)
     ap.add_argument("--block", type=int, default=256)
     ap.add_argument("--blocks", type=int, default=300)
+    ap.add_argument("--pools", action="store_true",
+                    help="only the saturated-pool table (12/18/24 voices)")
     args = ap.parse_args()
+    if args.pools:
+        pools(args.sr, args.block)
+        return
     for label, setup in CASES:
         run(label, setup, args.sr, args.block, args.blocks)
+    pools(args.sr, args.block)
 
 
 if __name__ == "__main__":

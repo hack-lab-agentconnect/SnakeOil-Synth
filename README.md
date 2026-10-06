@@ -118,6 +118,10 @@ filters each note separately; `master` is lighter on the CPU if audio glitches.
 
 `--channel` takes 1-16 (the channel filter is one-based).
 
+`--voices N` sets the playable voices (default 12: notes held at once) and
+`--tail-slots N` (0-12, default 6) the extra voices for released notes still ringing out;
+see "Polyphony, voice stealing and headroom".
+
 ## GUI and MIDI learn
 
 The window opens by default; use `--no-gui` for the console only.
@@ -436,8 +440,8 @@ The *Unison* group stacks several voices on every note: *Voices* 1-12 (default 1
 the sound is bit-identical to before), *Detune* 0-50 cents (default 15) and *Spread* 0-1
 (default 0.5). Console: `unison <1-12> [detune_cents] [spread]`.
 
-- The stack is drawn from the same 12-voice pool, so the CPU cost is bounded: polyphony
-  is `12 // width` notes (width 4 = 3 notes, width 12 = 1 note).
+- The stack is drawn from the same voice pool, so the CPU cost is bounded: the playable
+  voices are shared (`12 // width` held notes: width 4 = 3 notes, width 12 = 1 note).
 - When the pool is short, whole groups are stolen: quietest released groups first,
   then the oldest held one. A note never ends up with only some of its voices, except when the width is reduced to 1 while grouped notes are sounding.
 - Voice `i` of `N` is detuned by `linspace(-1, 1, N)[i] * Detune` cents and panned by
@@ -451,34 +455,52 @@ the sound is bit-identical to before), *Detune* 0-50 cents (default 15) and *Spr
 
 ## Polyphony, voice stealing and headroom
 
-- The synth has 12 voices. Unison uses `width` voices per note, so it divides the
-  polyphony: width 2 gives 6 notes, width 4 gives 3.
-- A released note keeps its voice until its release ends, so a long amp release
-  uses voices after you let go.
-- When every voice is busy, a new note steals one. Idle voices are always used first.
-  Then the quietest releasing voice is stolen (lowest envelope level; with unison, the
-  released group with the lowest summed level; ties go to the oldest). Only if every
-  voice is held is the oldest held note stolen.
-- A stolen voice is retriggered in place. It keeps its oscillator phases, filter state,
-  noise position and envelope level, and the attack starts from the current level, so
-  there is no click at the steal. Voices that were idle start from zero as before.
-- The footer shows `Voices: 10/12` (sounding voices / limit). Its tooltip gives the
-  number of voices stolen so far.
+The voice pool has two parts. **Playable voices** (default 12, `--voices`) are the voices
+whose key is held. **Tail slots** (default 6, `--tail-slots 0-12`) are extra voices that only
+released notes occupy while their release tails ring out, so the pool is 12 + 6 = 18
+voices by default (24 with 12 tail slots).
+
+- Unison uses `width` voices per note, so it divides the playable voices: width 2 gives
+  6 held notes, width 4 gives 3.
+- A new note always takes a free voice. A sounding voice is not retriggered in normal
+  use, so there is no cut and no pop. Playing past the playable limit gives the oldest held
+  note (the whole unison stack) a forced short release of 10 ms, a linear fade, and the new
+  note takes a free voice. The forced note's tail is gone within 10 ms.
+- Tail slots are shared with unused playable voices: with fewer keys held than the limit,
+  more tails than slots can ring. Only when the pool is full (playable limit + tail slots)
+  is a sounding voice stolen: idle voices first, then the quietest releasing voice (lowest
+  envelope level; with unison, the released group with the lowest summed level; ties go to
+  the oldest). A stolen voice is retriggered in place. It keeps its oscillator phases, filter
+  state, noise position and envelope level, and the attack starts from the current level, so
+  there is no click at the steal.
+- Sustain-pedal notes count as held. With `--tail-slots 0` the pool is the playable voices
+  only and voices are stolen as in earlier versions (idle first, then the quietest releasing
+  voice, then the oldest held note), so older sound and behaviour are unchanged.
+- The footer shows `Voices 8/12` (held voices / playable limit) and `Tails 3/6` (released
+  notes still ringing / tail slots). The tails label turns orange when the tails fill all
+  the slots. Click it to switch between 6 and 12 tail slots (from "Tails off" it enables 6).
+  The voices tooltip gives the number of voices stolen and forced releases so far. With 0
+  tail slots the footer shows `Voices: 10/12` (sounding voices / limit) and `Tails off`.
 - The footer `CPU 31%  peak 58%  xruns 0` label is the audio callback time (render
   and copy) divided by the block time. *CPU* is a moving average, *peak* is the
   highest recent load (a maximum that decays over about a second), and *xruns* counts
   callbacks that PortAudio reported as output underflows (audible dropouts). The label
   turns orange when the peak reaches 80% and red after any xrun.
 
-Measured on the development machine (44.1 kHz, 256-sample blocks, budget 5.8 ms), with
-a heavy patch: unison 2, osc 2 on, 24 dB filter, all four effects, limiter, every
-voice busy. The numbers vary by machine.
+More tail slots cost CPU only while tails are actually ringing. Measured with
+`python bench.py --sr 44100 --pools` (44.1 kHz, 256-sample blocks, budget 5.8 ms), with
+a heavy patch: unison 2, osc 2 on, 24 dB filter, all four effects, limiter, 1.5 s amp
+release, a new note every 116 ms (five held), so the pool stays full. Load is the
+render time as a share of the block budget. The numbers vary by machine.
 
-| Voices | Mean load | Worst block |
-|-------:|----------:|------------:|
-| 12     | 46%       | 70%         |
-| 16     | 57%       | 97%         |
-| 24     | 80%       | 110%        |
+| Pool (voices + tails) | Mean load | p99   | Worst block |
+|----------------------:|----------:|------:|------------:|
+| 12 + 0 = 12           | 46%       | 58%   | 72%         |
+| 12 + 6 = 18           | 65%       | 82%   | 100%        |
+| 12 + 12 = 24          | 84%       | 100%  | 123%        |
+
+If the worst block nears 100% on your machine, use fewer tail slots (`--tail-slots 0` to 6),
+a shorter amp release, or a narrower unison.
 
 ## Tempo, MIDI clock and synced delay
 

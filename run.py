@@ -5,7 +5,8 @@ import time
 from pathlib import Path
 
 from midi_synth.config import (
-    SAMPLE_RATE, BLOCK_SIZE, MAX_VOICES, LPF_MODES, DEFAULT_LPF_MODE,
+    SAMPLE_RATE, BLOCK_SIZE, MAX_VOICES, TAIL_SLOTS, TAIL_SLOTS_MAX,
+    LPF_MODES, DEFAULT_LPF_MODE,
 )
 from midi_synth.bindings import default_profile
 from midi_synth.engine import SynthEngine
@@ -42,7 +43,11 @@ def parse_args(argv):
     p.add_argument("--samplerate", type=int, default=None,
                    help="output sample rate (default: the selected device's rate)")
     p.add_argument("--blocksize", type=int, default=BLOCK_SIZE)
-    p.add_argument("--voices", type=int, default=MAX_VOICES, help="max simultaneous notes (1-12+)")
+    p.add_argument("--voices", type=int, default=MAX_VOICES, help="playable voices: max simultaneously held notes (1-12+)")
+    p.add_argument("--tail-slots", type=int, default=TAIL_SLOTS, choices=range(0, TAIL_SLOTS_MAX + 1),
+                   metavar="N",
+                   help="extra voices for released notes' tails (0-%d, default %d); "
+                        "--voices counts only held notes" % (TAIL_SLOTS_MAX, TAIL_SLOTS))
     p.add_argument("--audio-device", default=None, help="output device index or name")
     p.add_argument("--hostapi", default=None,
                    help="force a host API: asio, wasapi, wdm-ks, mme, ... (default: auto)")
@@ -634,7 +639,8 @@ def main(argv=None):
         sd, choice["device"], SAMPLE_RATE
     )
     engine = SynthEngine(sr=samplerate, block_size=args.blocksize,
-                         max_voices=args.voices)
+                         max_voices=args.voices, tail_slots=args.tail_slots,
+                         tail_capacity=TAIL_SLOTS_MAX)
     engine.set_lpf_mode(args.lpf_mode)
 
     config_dir, migration_message = resolve_config_dir(args.config_dir)
