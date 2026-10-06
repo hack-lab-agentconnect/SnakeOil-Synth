@@ -259,6 +259,10 @@ def build_registry(engine):
         Param(id="velocity_on", label="Velocity", group="Master", kind=TOGGLE,
               get=lambda: p["velocity_on"], set=engine.set_velocity_on,
               tooltip="When off, every note plays at one fixed velocity."),
+        Param(id="auto_limiter", label="Auto Limiter", group="Master", kind=TOGGLE,
+              get=lambda: p["auto_limiter"], set=engine.set_auto_limiter,
+              tooltip="Automatically turns the volume down when the signal would "
+                      "clip, then lets it come back up (about 0.15 s)."),
     ]
     params += [
         envelope("amp_attack", "Attack", AMP_ATTACK_MAX,

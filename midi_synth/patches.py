@@ -6,7 +6,8 @@ from pathlib import Path
 from .profiles import ProfileError, _atomic_write_json, validate_name
 
 CURRENT_VERSION = 1
-PATCH_EXCLUDED = ("master_gain",)
+PATCH_EXCLUDED = ("master_gain", "auto_limiter")
+PATCH_IGNORED_SILENTLY = ("auto_limiter",)
 INIT_NAME = "Init"
 MIGRATIONS = {}
 
@@ -29,6 +30,8 @@ def apply(registry, values, defaults):
     """
     warnings = []
     for pid in values:
+        if pid in PATCH_IGNORED_SILENTLY:
+            continue
         if pid in PATCH_EXCLUDED or pid not in registry:
             warnings.append("Ignored unknown parameter %r" % pid)
     for param in registry:

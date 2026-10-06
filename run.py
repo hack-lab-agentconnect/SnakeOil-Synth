@@ -161,7 +161,8 @@ HELP_TEXT = """commands:
   lpfmode <voice|master>     filter placement
   adsr <a> <d> <s> <r>       amp envelope: attack, decay (s), sustain (0-1), release (s)
   velocity <on|off>          off = every note plays at one fixed velocity
-  fltenv <-1..1>             filter envelope amount (per-voice filter)
+  limiter <on|off>           auto limiter: turns the volume down when the signal would clip
+  fltenv <-1..1>            filter envelope amount (per-voice filter)
   lfo <rate> <depth> [wave] [dest]  LFO: 0.05-20 Hz, depth 0-1 (0 = off),
                              wave sine|triangle|saw|square|random|random-glide,
                              dest pitch|filter|pwm|amp|lfo2-rate (LFO 1 speeds/slows LFO 2)
@@ -419,6 +420,12 @@ def console_loop(engine, registry=None, patch_store=None, patch_defaults=None,
                     print("usage: velocity <on|off>")
                 else:
                     engine.set_velocity_on(on)
+            elif cmd == "limiter":
+                on = parse_on_off(parts[1]) if len(parts) > 1 else None
+                if on is None:
+                    print("usage: limiter <on|off>")
+                else:
+                    engine.set_auto_limiter(on)
             elif cmd == "fltenv":
                 engine.set_flt_env_amount(float(parts[1]))
             elif cmd == "lfo":

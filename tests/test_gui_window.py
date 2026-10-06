@@ -303,6 +303,45 @@ def test_meter_tick_shows_level_and_clip(qapp, tmp_path):
     window.close()
 
 
+def test_master_group_has_limiter_toggle_and_gr_label(rig):
+    from midi_synth.gui.controls import ParamControl
+
+    window = rig[-1]
+    _fit(window, 1700, 1000)
+    box = _master_box(window)
+    assert box.isAncestorOf(window.controls["auto_limiter"])
+    assert box.isAncestorOf(window.limiter_label)
+    assert box.rect().contains(window.limiter_label.geometry())
+    assert not window.limiter_label.geometry().intersects(window.meter.geometry())
+    for control in box.findChildren(ParamControl):
+        assert not control.geometry().intersects(window.limiter_label.geometry())
+    window.close()
+
+
+def test_gr_label_follows_limiter(qapp, tmp_path):
+    engine, registry, *_, window = _make_rig(tmp_path, 8)
+    window._meter_timer.stop()
+    window._meter_tick()
+    assert window.limiter_label.text() == "GR off"
+    registry.set("auto_limiter", True)
+    window._meter_tick()
+    assert window.limiter_label.text() == "GR 0.0 dB"
+    engine.set_osc_levels(1.0, 1.0)
+    engine.set_master_gain(1.5)
+    for note in (48, 55, 60, 64, 67, 72):
+        engine.note_on(note, 127)
+    for _ in range(8):
+        engine.render(64)
+    window._meter_tick()
+    text = window.limiter_label.text()
+    assert text.startswith("GR -") and text.endswith(" dB") and text != "GR -0.0 dB"
+    assert not window.meter.clip_lit
+    registry.set("auto_limiter", False)
+    window._meter_tick()
+    assert window.limiter_label.text() == "GR off"
+    window.close()
+
+
 def test_meter_tick_swallows_engine_errors(rig):
     engine, *_, window = rig
 

@@ -46,7 +46,7 @@ The groups sit on a grid:
 
 | | Col 1 | Col 2 | Col 3 | Col 4 | Col 5 |
 |---|---|---|---|---|---|
-| Row 1 | Oscillator 1 | Oscillator 2 | Modulation | Master (volume, velocity, level meter) | Tempo |
+| Row 1 | Oscillator 1 | Oscillator 2 | Modulation | Master (volume, velocity, auto limiter, level meter) | Tempo |
 | Row 2 | Filter (incl. env amount, key track, velocity) | Filter Env | Amp Envelope | LFO (LFO 1 and LFO 2 side by side) | Mod Matrix |
 | Row 3 | Effects (spans columns 1-3) | | | Unison | Glide |
 
@@ -153,7 +153,7 @@ recordings folder), and `rec stop` finishes the file.
 
 ## Patches
 
-A patch is a saved sound: every knob, slider and switch except master volume.
+A patch is a saved sound: every knob, slider and switch except master volume and the auto limiter.
 
 - **GUI:** the second toolbar row has a *Patch* box (choosing one loads it at once) and
   Save, Save As..., Rename and Delete. A `*` after the name means you changed something
@@ -197,8 +197,29 @@ The **CLIP** light above the bars comes on when the signal entering the soft cli
 (after master volume) reaches full scale, so the clipper is compressing hard and the sound
 is being distorted. It stays lit for two seconds after the last clip; click the meter to
 clear it at once. If it lights often, turn the master volume down, or play fewer voices or
-lower the oscillator and effect levels. The meter only watches the audio; it does not change
-the sound.
+lower the oscillator and effect levels, or switch on the auto limiter (below). The meter
+only watches the audio; it does not change the sound.
+
+## Auto limiter
+
+The **Auto Limiter** switch (Master group, off by default) turns the volume down by itself
+when the signal would clip, and lets it come back up afterwards. With it off, the sound is
+exactly as before.
+
+- It works on the signal after master volume, just before the soft clipper, and keeps
+  the peaks at or below 0.98 (about -0.2 dBFS), so the clipper stays out of its hard range.
+- **Instant attack, 0.15 s release:** the gain drops the moment a peak would go over the
+  ceiling, and recovers smoothly (the reduction falls to about 37% in 0.15 s).
+- **Linked stereo:** both channels get the same gain, so the stereo image does not shift.
+- A quiet signal passes through unchanged (bit for bit).
+- The **GR** readout under the level meter shows the largest gain reduction since the last
+  update, for example `GR -3.2 dB`; `GR 0.0 dB` means the limiter is idle, and `GR off`
+  means it is switched off.
+- With the limiter on, the **CLIP** light and the meter show the signal after limiting, so
+  a signal that would clip with the limiter off does not light CLIP.
+- It belongs to the output stage, not to the sound: like master volume it is not stored
+  in patches (a patch file that contains it is accepted and the value ignored). Console:
+  `limiter on|off`.
 
 ## Velocity, filter envelope and key tracking
 
@@ -447,6 +468,7 @@ An interactive console starts alongside the audio. Type `help`. Commands:
 | `lpfmode <voice\|master>` | filter placement |
 | `adsr <a> <d> <s> <r>` | amp envelope: attack, decay in s (0.001-5), sustain 0-1, release in s (0.001-10) |
 | `velocity <on\|off>` | off = every note plays at one fixed velocity |
+| `limiter <on\|off>` | auto limiter: turns the volume down when the signal would clip (default off) |
 | `fltenv <-1..1>` | filter envelope amount (per-voice filter; default 0) |
 | `lfo <rate> <depth> [wave] [dest]` | LFO 1: 0.05-20 Hz, depth 0-1 (0 = off); wave sine\|triangle\|saw\|square\|random\|random-glide; dest pitch\|filter\|pwm\|amp\|lfo2-rate |
 | `lfo2 <rate> <depth> [wave] [dest]` | LFO 2, same arguments (default dest filter; dest also lfo1-rate) |
@@ -532,7 +554,7 @@ per voice (up to 12, shared with unison):
                                          filter envelope, key tracking, velocity, LFO
 
 all voices ─▶ sum (left/right) ─▶ low-pass* ─▶ chorus ─▶ delay ─▶ reverb ─▶ bitcrush
-           ─▶ master gain ─▶ soft clip (tanh) ─▶ out  (level meter reads here)
+           ─▶ master gain ─▶ auto limiter (optional) ─▶ soft clip (tanh) ─▶ out  (level meter reads here)
 ```
 
 \* The low-pass filter runs in one of two places: per voice before the amp envelope (the

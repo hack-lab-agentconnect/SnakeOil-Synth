@@ -281,7 +281,12 @@ class MainWindow(QMainWindow):
         groups["Tempo"].layout().addWidget(self.tempo_label, 1, 0)
         self.meter = LevelMeter()
         master = groups["Master"].layout()
-        master.addWidget(self.meter, 0, master.columnCount(), Qt.AlignTop)
+        meter_col = master.columnCount()
+        master.addWidget(self.meter, 0, meter_col, Qt.AlignTop)
+        self.limiter_label = QLabel("GR off")
+        self.limiter_label.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
+        self.limiter_label.setToolTip("Gain reduction applied by the auto limiter.")
+        master.addWidget(self.limiter_label, 1, meter_col, Qt.AlignTop)
         grid = QGridLayout()
         grid.setContentsMargins(6, 2, 6, 4)
         grid.setSpacing(4)
@@ -599,6 +604,14 @@ class MainWindow(QMainWindow):
         try:
             left, right, clipped = self.engine.take_meter()
             self.meter.update_levels(left, right, clipped)
+            reduction = self.engine.take_limiter()
+            if not self.engine.params["auto_limiter"]:
+                text = "GR off"
+            elif reduction < 0.05:
+                text = "GR 0.0 dB"
+            else:
+                text = "GR %.1f dB" % -reduction
+            self.limiter_label.setText(text)
         except Exception as exc:
             if not self._meter_failed:
                 self._meter_failed = True

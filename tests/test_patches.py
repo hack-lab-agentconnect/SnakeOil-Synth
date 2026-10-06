@@ -37,11 +37,19 @@ def store(tmp_path):
 
 # ---- capture / apply --------------------------------------------------
 
-def test_capture_excludes_master_gain_and_covers_everything_else():
+def test_capture_excludes_output_stage_and_covers_everything_else():
     _, registry = make_registry()
     values = capture(registry)
-    assert "master_gain" not in values
-    assert set(values) == set(registry.ids()) - {"master_gain"}
+    assert "master_gain" not in values and "auto_limiter" not in values
+    assert set(PATCH_EXCLUDED) == {"master_gain", "auto_limiter"}
+    assert set(values) == set(registry.ids()) - set(PATCH_EXCLUDED)
+
+
+def test_auto_limiter_is_neither_captured_nor_applied_and_not_warned_about():
+    engine, registry = make_registry()
+    engine.set_auto_limiter(True)
+    assert apply(registry, {"auto_limiter": False}, capture(registry)) == []
+    assert engine.params["auto_limiter"] is True
 
 
 def test_round_trip_every_param_with_non_default_values():

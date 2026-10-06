@@ -57,6 +57,7 @@ from .filters import LowPass, LPF_MIN_HZ, LPF_MAX_HZ, lpf_coefficients
 from .lfo import LFO
 from .voice import IDLE, Voice, midi_note_to_freq
 from .effects import EffectChain
+from .limiter import Limiter
 from .tempo import TempoTracker
 from .modmatrix import (
     DEST_NAMES,
@@ -87,6 +88,9 @@ class SynthEngine:
         self.lock = threading.RLock()
         self._meter_post = np.zeros(2)
         self._meter_clip = False
+        self._limiter = Limiter(sr)
+        self._limiter_min_gain = 1.0
+        self.last_driven_peak = 0.0
         self.voices = [Voice(sr) for _ in range(max_voices)]
         self.effects = EffectChain(sr)
         self.master_lpf = LowPass(sr)
@@ -117,6 +121,7 @@ class SynthEngine:
             "amp_sustain": DEFAULT_ADSR["sustain"],
             "amp_release": DEFAULT_ADSR["release"],
             "velocity_on": True,
+            "auto_limiter": False,
             "flt_env_amount": 0.0,
             "flt_keytrack": 0.0,
             "flt_vel": 0.0,
@@ -317,6 +322,12 @@ class SynthEngine:
     def set_velocity_on(self, on):
         with self.lock:
             self.params["velocity_on"] = bool(on)
+
+    def set_auto_limiter(self, on):
+        with self.lock:
+            self.params["auto_limiter"] = bool(on)
+            self._limiter.reset()
+            self._limiter_min_gain = 1.0
 
     def _set_unit(self, key, value, lo, hi):
         with self.lock:
@@ -1109,9 +1120,14 @@ class SynthEngine:
             if apply_effects:
                 out = self.effects.process(out)
             driven = out * params["master_gain"]
+            if params["auto_limiter"]:
+                driven, min_gain = self._limiter.process(driven)
+                if min_gain < self._limiter_min_gain:
+                    self._limiter_min_gain = min_gain
             out = np.tanh(driven)
             self._meter_post = np.maximum(self._meter_post, np.abs(out).max(axis=1))
-            if np.abs(driven).max() >= CLIP_THRESHOLD:
+            self.last_driven_peak = float(np.abs(driven).max())
+            if self.last_driven_peak >= CLIP_THRESHOLD:
                 self._meter_clip = True
             return np.ascontiguousarray(out.T).astype(np.float32)
 
@@ -1128,6 +1144,22 @@ class SynthEngine:
                       bool(self._meter_clip))
             self._meter_post = np.zeros(2)
             self._meter_clip = False
+            return result
+
+    @staticmethod
+    def _gain_to_db(gain):
+        return -20.0 * math.log10(max(gain, 1e-6))
+
+    def peek_limiter(self):
+        """Largest limiter gain reduction in dB (>= 0) since the last take_limiter."""
+        with self.lock:
+            return self._gain_to_db(self._limiter_min_gain)
+
+    def take_limiter(self):
+        """Like peek_limiter, then reset the running maximum."""
+        with self.lock:
+            result = self._gain_to_db(self._limiter_min_gain)
+            self._limiter_min_gain = 1.0
             return result
 
     def _fx_status(self, pid):
@@ -1179,6 +1211,7 @@ class SynthEngine:
                 "amp_sustain": self.params["amp_sustain"],
                 "amp_release": self.params["amp_release"],
                 "velocity_on": self.params["velocity_on"],
+                "auto_limiter": self.params["auto_limiter"],
                 "flt_env_amount": self.params["flt_env_amount"],
                 "flt_keytrack": self.params["flt_keytrack"],
                 "flt_vel": self.params["flt_vel"],

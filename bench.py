@@ -69,6 +69,11 @@ CASES = [
     ("unison 12, all four effects",
      lambda e: (e.set_unison_voices(12), fx("chorus", "delay", "reverb", "bitcrush")(e))),
     ("all four effects", fx("chorus", "delay", "reverb", "bitcrush")),
+    ("all four effects + limiter",
+     lambda e: (fx("chorus", "delay", "reverb", "bitcrush")(e), e.set_auto_limiter(True))),
+    ("all effects + limiter working",
+     lambda e: (fx("chorus", "delay", "reverb", "bitcrush")(e), e.set_auto_limiter(True),
+                e.set_osc_level(2, 1.0), e.set_master_gain(1.5))),
 ]
 
 
