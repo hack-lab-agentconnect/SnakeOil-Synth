@@ -1,4 +1,5 @@
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import (
     QComboBox, QFrame, QLabel, QMenu, QPushButton, QVBoxLayout,
 )
@@ -6,6 +7,25 @@ from PySide6.QtWidgets import (
 from ..params import CHOICE, CONTINUOUS, TOGGLE
 from .knob import Knob
 from .slider import ValueSlider
+
+
+TITLE_WIDTH = 64
+
+
+class ElidedLabel(QLabel):
+    """Centered label that elides long text instead of widening its column."""
+
+    def sizeHint(self):
+        hint = super().sizeHint()
+        return QSize(min(hint.width(), TITLE_WIDTH), hint.height())
+
+    def minimumSizeHint(self):
+        return QSize(16, super().minimumSizeHint().height())
+
+    def paintEvent(self, _event):
+        painter = QPainter(self)
+        text = self.fontMetrics().elidedText(self.text(), Qt.ElideRight, self.width())
+        painter.drawText(self.rect(), Qt.AlignHCenter | Qt.AlignVCenter, text)
 
 
 class ParamControl(QFrame):
@@ -25,16 +45,19 @@ class ParamControl(QFrame):
         if param.tooltip:
             self.setToolTip(param.tooltip)
 
-        self.title = QLabel(param.label)
+        self.title = ElidedLabel(param.label)
         self.title.setAlignment(Qt.AlignHCenter)
+        if not param.tooltip:
+            self.title.setToolTip(param.label)
         self.editor = self._make_editor()
         self.badge = QLabel("")
         self.badge.setObjectName("badge")
         self.badge.setAlignment(Qt.AlignHCenter)
+        self.badge.setFixedHeight(12)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(6, 6, 6, 6)
-        layout.setSpacing(4)
+        layout.setContentsMargins(3, 3, 3, 2)
+        layout.setSpacing(1)
         layout.addWidget(self.title)
         layout.addWidget(self.editor, 0, Qt.AlignHCenter)
         layout.addWidget(self.badge)

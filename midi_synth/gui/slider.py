@@ -4,7 +4,7 @@ from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtWidgets import QLabel, QSlider, QVBoxLayout, QWidget
 
 _STEPS = 1000
-_HEIGHT = 120
+_HEIGHT = 96
 
 
 class ValueSlider(QWidget):

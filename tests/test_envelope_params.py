@@ -37,7 +37,7 @@ def held_rms(engine, blocks):
 
 def test_registry_has_envelope_params_in_order(rig):
     _, reg = rig
-    ids = [p.id for p in reg if p.group == "Envelope"]
+    ids = [p.id for p in reg if p.group == "Amp Envelope"]
     assert ids == IDS
     for pid in IDS:
         assert reg[pid].kind == CONTINUOUS
@@ -62,7 +62,7 @@ def test_registry_ranges_scales_defaults(rig):
 
 def test_other_params_default_to_knob(rig):
     _, reg = rig
-    assert all(p.widget == "knob" for p in reg if p.group != "Envelope")
+    assert all(p.widget == "knob" for p in reg if p.group not in ("Amp Envelope", "Filter Env"))
 
 
 def test_set_reaches_engine_and_every_voice(rig):

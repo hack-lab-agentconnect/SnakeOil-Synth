@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass
 from typing import Any, Callable, Tuple
 
@@ -11,6 +12,16 @@ from .config import (
     AMP_ATTACK_MAX,
     AMP_DECAY_MAX,
     AMP_RELEASE_MAX,
+    LFO_WAVES,
+    LFO_DESTS,
+    LFO_RATE_MIN,
+    LFO_RATE_MAX,
+    GLIDE_MAX,
+    UNISON_MAX,
+    UNISON_DETUNE_MAX,
+    TEMPO_MIN,
+    TEMPO_MAX,
+    DELAY_DIVISION_NAMES,
 )
 from .filters import LPF_MIN_HZ, LPF_MAX_HZ
 
@@ -76,7 +87,10 @@ class ParamRegistry:
 
     def _coerce(self, param, value):
         if param.kind == CONTINUOUS:
-            return min(max(float(value), param.minimum), param.maximum)
+            number = float(value)
+            if not math.isfinite(number):
+                raise ValueError("%s must be a finite number, got %r" % (param.id, value))
+            return min(max(number, param.minimum), param.maximum)
         if param.kind == TOGGLE:
             return bool(value)
         if value not in param.choices:
@@ -148,7 +162,7 @@ def build_registry(engine):
         "delay": Param(
             id="fx_delay_time", label="Time", group="Effects", kind=CONTINUOUS,
             minimum=200.0, maximum=4000.0, scale="log", fmt="{:.0f} ms",
-            under="fx_delay", get=lambda: fx.delay.time_ms,
+            under="fx_delay", get=lambda: engine.delay_manual_ms,
             set=engine.set_delay_time, tooltip="Delay time between echoes."),
         "reverb": Param(
             id="fx_reverb_amount", label="Amount", group="Effects",
@@ -161,9 +175,9 @@ def build_registry(engine):
             tooltip="Bit depth and sample-rate reduction."),
     }
 
-    def envelope(pid, label, maximum, tooltip, time=True):
+    def envelope(pid, label, maximum, tooltip, time=True, group="Amp Envelope"):
         return Param(
-            id=pid, label=label, group="Envelope", kind=CONTINUOUS,
+            id=pid, label=label, group=group, kind=CONTINUOUS,
             minimum=AMP_TIME_MIN if time else 0.0, maximum=maximum,
             scale="log" if time else "linear",
             formatter=format_seconds if time else None, widget="slider",
@@ -176,6 +190,10 @@ def build_registry(engine):
         Param(id="osc1_square", label="Square layer", group="Oscillator 1", kind=TOGGLE,
               get=lambda: p["osc1_square"], set=engine.set_osc1_square,
               tooltip="Layer a square wave over the saw."),
+        Param(id="osc1_square_level", label="Sq Level", group="Oscillator 1",
+              kind=CONTINUOUS, minimum=0.0, maximum=1.0, fmt="{:.2f}",
+              get=lambda: p["osc1_square_level"], set=engine.set_osc1_square_level,
+              tooltip="How much square is added on top of the saw."),
         Param(id="osc1_pwm", label="PWM", group="Oscillator 1", kind=CONTINUOUS,
               minimum=0.0, maximum=0.5, fmt="{:.2f}",
               get=lambda: p["osc1_pwm"], set=engine.set_osc1_pwm,
@@ -216,9 +234,24 @@ def build_registry(engine):
               set=lambda v: engine.set_lpf_mode("master" if v else "voice"),
               tooltip="Off: one filter per voice. On: a single filter on the whole mix "
                       "(lighter on the CPU; use it if audio glitches)."),
+        Param(id="flt_env_amount", label="Env Amt", group="Filter", kind=CONTINUOUS,
+              minimum=-1.0, maximum=1.0, fmt="{:+.2f}",
+              get=lambda: p["flt_env_amount"], set=engine.set_flt_env_amount,
+              tooltip="How far the filter envelope moves the cutoff "
+                      "(up to 6 octaves). Negative closes the filter."),
+        Param(id="flt_keytrack", label="Key Trk", group="Filter", kind=CONTINUOUS,
+              get=lambda: p["flt_keytrack"], set=engine.set_flt_keytrack,
+              tooltip="Cutoff follows the note pitch. 1.00 = one octave "
+                      "of cutoff per octave of pitch."),
+        Param(id="flt_vel", label="Vel>Cut", group="Filter", kind=CONTINUOUS,
+              get=lambda: p["flt_vel"], set=engine.set_flt_vel,
+              tooltip="Harder key presses open the filter further."),
         Param(id="master_gain", label="Volume", group="Master", kind=CONTINUOUS,
               maximum=MASTER_GAIN_MAX, get=lambda: p["master_gain"],
               set=engine.set_master_gain),
+        Param(id="velocity_on", label="Velocity", group="Master", kind=TOGGLE,
+              get=lambda: p["velocity_on"], set=engine.set_velocity_on,
+              tooltip="When off, every note plays at one fixed velocity."),
     ]
     params += [
         envelope("amp_attack", "Attack", AMP_ATTACK_MAX,
@@ -230,14 +263,108 @@ def build_registry(engine):
         envelope("amp_release", "Release", AMP_RELEASE_MAX,
                  "Time for a note to fade out after the key is released."),
     ]
+    params += [
+        envelope("flt_attack", "Attack", AMP_ATTACK_MAX,
+                 "Time for the filter to open after a note starts.",
+                 group="Filter Env"),
+        envelope("flt_decay", "Decay", AMP_DECAY_MAX,
+                 "Time for the filter to fall to the sustain level.",
+                 group="Filter Env"),
+        envelope("flt_sustain", "Sustain", 1.0,
+                 "Filter envelope level held while the key is down.",
+                 time=False, group="Filter Env"),
+        envelope("flt_release", "Release", AMP_RELEASE_MAX,
+                 "Time for the filter envelope to fall after key release.",
+                 group="Filter Env"),
+    ]
+    params += [
+        Param(id="lfo_rate", label="Rate", group="LFO", kind=CONTINUOUS,
+              minimum=LFO_RATE_MIN, maximum=LFO_RATE_MAX, scale="log",
+              fmt="{:.2f} Hz", get=lambda: p["lfo_rate"], set=engine.set_lfo_rate,
+              tooltip="LFO speed."),
+        Param(id="lfo_depth", label="Depth", group="LFO", kind=CONTINUOUS,
+              get=lambda: p["lfo_depth"], set=engine.set_lfo_depth,
+              tooltip="LFO amount. 0 = LFO off."),
+        Param(id="lfo_wave", label="Wave", group="LFO", kind=CHOICE,
+              choices=LFO_WAVES, get=lambda: p["lfo_wave"], set=engine.set_lfo_wave,
+              tooltip="LFO waveform. Random = sample and hold."),
+        Param(id="lfo_dest", label="Dest", group="LFO", kind=CHOICE,
+              choices=LFO_DESTS, get=lambda: p["lfo_dest"], set=engine.set_lfo_dest,
+              tooltip="What the LFO modulates: pitch, filter cutoff, "
+                      "pulse width or volume."),
+        Param(id="glide_time", label="Time", group="Glide", kind=CONTINUOUS,
+              minimum=0.0, maximum=GLIDE_MAX, fmt="{:.2f} s",
+              get=lambda: p["glide_time"], set=engine.set_glide_time,
+              tooltip="Time to slide from the previous note. 0 = off."),
+        Param(id="glide_legato", label="Legato only", group="Glide", kind=TOGGLE,
+              get=lambda: p["glide_legato"], set=engine.set_glide_legato,
+              tooltip="Only glide when another key is still held."),
+    ]
+    params += [
+        Param(id="unison_voices", label="Voices", group="Unison", kind=CHOICE,
+              choices=tuple(str(i) for i in range(1, UNISON_MAX + 1)),
+              get=lambda: str(p["unison_voices"]), set=engine.set_unison_voices,
+              tooltip="Voices stacked per note. Polyphony drops to "
+                      "12 divided by this. 1 = off."),
+        Param(id="unison_detune", label="Detune", group="Unison", kind=CONTINUOUS,
+              minimum=0.0, maximum=UNISON_DETUNE_MAX, fmt="{:.0f} ct",
+              get=lambda: p["unison_detune"], set=engine.set_unison_detune,
+              tooltip="Pitch spread of the outermost unison voices, in cents."),
+        Param(id="unison_spread", label="Spread", group="Unison", kind=CONTINUOUS,
+              get=lambda: p["unison_spread"], set=engine.set_unison_spread,
+              tooltip="Stereo width of the unison voices."),
+    ]
+    params += [
+        Param(id="tempo_bpm", label="BPM", group="Tempo", kind=CONTINUOUS,
+              minimum=TEMPO_MIN, maximum=TEMPO_MAX, fmt="{:.0f}",
+              get=lambda: p["tempo_bpm"], set=engine.set_tempo_bpm,
+              tooltip="Manual tempo, used when no MIDI clock is arriving."),
+    ]
     pingpong = Param(
         id="fx_delay_pingpong", label="Ping-pong", group="Effects", kind=TOGGLE,
         under="fx_delay_time", get=lambda: fx.delay.pingpong,
         set=engine.set_delay_pingpong,
         tooltip="Bounce the echoes between the left and right speakers.")
+    extras = {
+        "delay": [
+            pingpong,
+            Param(id="fx_delay_feedback", label="Feedback", group="Effects",
+                  kind=CONTINUOUS, minimum=0.0, maximum=0.95, under="fx_delay",
+                  get=lambda: fx.delay.feedback, set=engine.set_delay_feedback,
+                  tooltip="How much of each echo is fed back. High = "
+                          "long trailing repeats."),
+            Param(id="fx_delay_damp", label="Tone", group="Effects",
+                  kind=CONTINUOUS, minimum=0.0, maximum=0.9, under="fx_delay",
+                  get=lambda: fx.delay.damp, set=engine.set_delay_damp,
+                  tooltip="Echo brightness: higher = darker echoes."),
+            Param(id="fx_delay_sync", label="Sync", group="Effects",
+                  kind=TOGGLE, under="fx_delay_time",
+                  get=lambda: p["delay_sync"], set=engine.set_delay_sync,
+                  tooltip="Lock the delay time to the tempo (MIDI clock "
+                          "when present, otherwise the BPM setting)."),
+            Param(id="fx_delay_division", label="Division", group="Effects",
+                  kind=CHOICE, choices=DELAY_DIVISION_NAMES,
+                  under="fx_delay_time", get=lambda: p["delay_division"],
+                  set=engine.set_delay_division,
+                  tooltip="Note length of one echo when synced. "
+                          ". = dotted, T = triplet."),
+        ],
+        "reverb": [
+            Param(id="fx_reverb_size", label="Size", group="Effects",
+                  kind=CONTINUOUS, minimum=0.5, maximum=0.98,
+                  under="fx_reverb", get=lambda: fx.reverb.room,
+                  set=engine.set_reverb_size,
+                  tooltip="Room size: how long the reverb tail rings."),
+            Param(id="fx_reverb_damp", label="Damping", group="Effects",
+                  kind=CONTINUOUS, minimum=0.0, maximum=0.9,
+                  under="fx_reverb", get=lambda: fx.reverb.damp,
+                  set=engine.set_reverb_damp,
+                  tooltip="High-frequency absorption in the reverb tail. "
+                          "Higher = darker, softer tail."),
+        ],
+    }
     for n in EFFECT_NAMES:
         params.append(effect(n))
         params.append(dials[n])
-        if n == "delay":
-            params.append(pingpong)
+        params.extend(extras.get(n, ()))
     return ParamRegistry(params)

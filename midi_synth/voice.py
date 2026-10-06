@@ -1,6 +1,9 @@
+import math
+
 import numpy as np
 
-from .filters import LowPass
+from .config import DEFAULT_SQUARE_LEVEL, FLT_ENV_OCTAVES, FLT_VEL_OCTAVES
+from .filters import LPF_MAX_HZ, LPF_MIN_HZ, LowPass, lpf_coefficients
 
 ATTACK, DECAY, SUSTAIN, RELEASE, IDLE = range(5)
 
@@ -98,41 +101,118 @@ class Voice:
         self.osc1 = Oscillator(sr, "saw")
         self.osc2 = Oscillator(sr, "square")
         self.env = Envelope(sr)
+        self.flt_env = Envelope(sr)
         self.lpf = LowPass(sr)
         self.note = -1
         self.gate = False
         self.freq = 0.0
         self.velocity = 0.0
         self.trigger_order = 0
+        self._lpf_bypassed = False
+        self.glide_from = None
+        self.glide_total = 0.0
+        self.glide_pos = 0.0
+        self.detune_cents = 0.0
+        self.pan = 0.0
+        self.gain = 1.0
+        self.group = None
 
     @property
     def active(self):
         return self.env.active
 
-    def note_on(self, note, velocity, order):
+    def note_on(self, note, velocity, order, glide_from=None, glide_time=0.0,
+                detune_cents=0.0, pan=0.0, gain=1.0, group=None,
+                random_phase=False, rng=None):
         self.note = note
         self.gate = True
         self.freq = midi_note_to_freq(note)
         self.velocity = velocity
         self.trigger_order = order
-        self.osc1.reset()
-        self.osc2.reset()
+        if glide_from is not None and glide_time > 0.0:
+            self.glide_from = glide_from
+            self.glide_total = glide_time
+        else:
+            self.glide_from = None
+            self.glide_total = 0.0
+        self.glide_pos = 0.0
+        self.detune_cents = detune_cents
+        self.pan = pan
+        self.gain = gain
+        self.group = group
+        if random_phase:
+            self.osc1.phase = rng.random()
+            self.osc2.phase = rng.random()
+        else:
+            self.osc1.reset()
+            self.osc2.reset()
         self.env.note_on()
+        self.flt_env.level = 0.0
+        self.flt_env.note_on()
         self.lpf.reset()
 
     def note_off(self):
         self.gate = False
         self.env.note_off()
+        self.flt_env.note_off()
+
+    def _voice_coeffs(self, n, params):
+        """Low-pass coefficients for this block, or None for no filtering.
+
+        Uses the shared coefficients unless a per-voice modulation is active.
+        """
+        shared = params["lpf_coeffs"]
+        amount = params.get("flt_env_amount", 0.0)
+        keytrack = params.get("flt_keytrack", 0.0)
+        vel_amt = params.get("flt_vel", 0.0)
+        lfo_oct = params.get("lfo_filter_oct", 0.0)
+        if not (amount or keytrack or vel_amt or lfo_oct):
+            return shared
+        octaves = lfo_oct
+        if amount:
+            octaves += amount * FLT_ENV_OCTAVES * float(np.mean(self.flt_env.process(n)))
+        if keytrack:
+            octaves += keytrack * (self.note - 60) / 12.0
+        if vel_amt:
+            octaves += vel_amt * FLT_VEL_OCTAVES * (self.velocity - 0.5)
+        cutoff = params["lpf_cutoff"] * 2.0 ** octaves
+        cutoff = min(max(cutoff, LPF_MIN_HZ), 0.45 * self.sr)
+        if cutoff >= LPF_MAX_HZ / 1.01:
+            return None
+        return lpf_coefficients(cutoff, params["lpf_resonance"], self.sr)
 
     def render(self, n, params):
         self.osc1.layer_square = params["osc1_square"]
-        self.osc1.duty = params["osc1_pwm"]
-        self.osc2.duty = params["osc2_pwm"]
-        freq = self.freq * params["pitch_ratio"]
+        self.osc1.square_level = params.get("osc1_square_level", DEFAULT_SQUARE_LEVEL)
+        lfo_pwm = params.get("lfo_pwm", 0.0)
+        if lfo_pwm:
+            self.osc1.duty = min(max(params["osc1_pwm"] + lfo_pwm, 0.0), 0.5)
+            self.osc2.duty = min(max(params["osc2_pwm"] + lfo_pwm, 0.0), 0.5)
+        else:
+            self.osc1.duty = params["osc1_pwm"]
+            self.osc2.duty = params["osc2_pwm"]
+        base = self.freq
+        if self.glide_from is not None:
+            centre = self.glide_pos + 0.5 * n / self.sr
+            remaining = max(0.0, 1.0 - centre / self.glide_total)
+            if remaining > 0.0:
+                base = math.exp(math.log(base) + (
+                    math.log(self.glide_from) - math.log(base)) * remaining)
+            self.glide_pos += n / self.sr
+            if self.glide_pos >= self.glide_total:
+                self.glide_from = None
+        freq = base * params["pitch_ratio"]
+        lfo_pitch = params.get("lfo_pitch_ratio", 1.0)
+        if lfo_pitch != 1.0:
+            freq *= lfo_pitch
         f2 = freq * semitones_to_ratio(
             params["detune2_semitones"], params["detune2_cents"]
         ) * (2.0 if params["osc2_octave_up"] else 1.0)
         f1 = freq * (0.5 if params["osc1_octave_down"] else 1.0)
+        if self.detune_cents != 0.0:
+            ud = 2.0 ** (self.detune_cents / 1200.0)
+            f1 *= ud
+            f2 *= ud
         limit = 0.45 * self.sr
         f1 = min(f1, limit)
         f2 = min(f2, limit)
@@ -166,9 +246,19 @@ class Voice:
         mix = params["osc1_level"] * mod
         if audible2:
             mix = mix + level2 * sec
-        coeffs = params["lpf_coeffs"]
-        if coeffs is not None and params["lpf_mode"] == "voice":
-            mix = self.lpf.process(mix, coeffs)
+        if params["lpf_mode"] == "voice":
+            coeffs = self._voice_coeffs(n, params)
+            if coeffs is not None:
+                if self._lpf_bypassed:
+                    self.lpf.reset()
+                mix = self.lpf.process(mix, coeffs)
+            self._lpf_bypassed = coeffs is None
         env = self.env.process(n)
         amp = 0.22 * (0.3 + 0.7 * self.velocity)
-        return mix * env * amp
+        out = mix * env * amp
+        lfo_amp = params.get("lfo_amp")
+        if lfo_amp is not None:
+            out = out * lfo_amp
+        if self.gain != 1.0:
+            out = out * self.gain
+        return out

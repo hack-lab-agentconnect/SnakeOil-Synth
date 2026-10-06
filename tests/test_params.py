@@ -71,7 +71,7 @@ def test_cents_setter_preserves_semitones(rig):
 def test_ids_cover_every_group(rig):
     _, reg = rig
     assert set(reg.ids()) >= {
-        "osc1_level", "osc1_square", "osc1_pwm", "osc2_level", "osc2_pwm",
+        "osc1_level", "osc1_square", "osc1_square_level", "osc1_pwm", "osc2_level", "osc2_pwm",
         "detune2_semitones", "detune2_cents", "mod_mode", "fm_depth",
         "master_gain", "fx_chorus", "fx_delay", "fx_reverb", "fx_bitcrush",
     }
@@ -190,3 +190,35 @@ def test_engine_status_includes_dials(rig):
 def test_chorus_rate_param_removed(rig):
     _, reg = rig
     assert "fx_chorus_rate" not in [p.id for p in reg]
+
+
+def test_square_level_param_registered_and_clamped(rig):
+    engine, reg = rig
+    p = reg["osc1_square_level"]
+    assert (p.kind, p.group, p.label) == ("continuous", "Oscillator 1", "Sq Level")
+    assert (p.minimum, p.maximum, p.fmt) == (0.0, 1.0, "{:.2f}")
+    assert p.tooltip == "How much square is added on top of the saw."
+    assert reg.get("osc1_square_level") == 0.5
+    order = [q.id for q in reg if q.group == "Oscillator 1"]
+    assert order == ["osc1_level", "osc1_square", "osc1_square_level", "osc1_pwm", "osc1_octave"]
+    reg.set("osc1_square_level", 3.0)
+    assert engine.params["osc1_square_level"] == 1.0
+    engine.set_osc1_square_level(-2)
+    assert engine.params["osc1_square_level"] == 0.0
+    engine.set_osc1_square_level(0.3)
+    assert engine.status()["osc1_square_level"] == 0.3
+    assert reg.from_midi("osc1_square_level", 127) == 1.0
+
+
+def test_square_level_patch_round_trip(rig):
+    import json
+
+    from midi_synth.patches import apply, capture
+
+    engine, reg = rig
+    reg.set("osc1_square_level", 0.8)
+    snap = json.loads(json.dumps(capture(reg)))
+    assert snap["osc1_square_level"] == 0.8
+    reg.set("osc1_square_level", 0.1)
+    assert apply(reg, snap, capture(reg)) == []
+    assert engine.params["osc1_square_level"] == 0.8

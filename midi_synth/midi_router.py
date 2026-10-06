@@ -1,6 +1,6 @@
 import threading
 
-from .bindings import CC, NOTE, Source
+from .bindings import CC, NOTE, PRESSURE, Source
 from .params import TOGGLE
 
 
@@ -58,6 +58,20 @@ class MidiRouter:
                 self._learn(Source(CC, control, ch))
                 return True
             pid = self._profile.param_for(CC, ch, control)
+            if pid is None or pid not in self.registry:
+                return False
+            self.registry.apply_midi(pid, value)
+            return True
+
+    def handle_pressure(self, channel, value):
+        """Channel aftertouch; channel is mido-style 0-15. True if consumed."""
+        ch = channel + 1
+        self._message("Aftertouch ch%d = %d" % (ch, value))
+        with self._lock:
+            if self._armed is not None:
+                self._learn(Source(PRESSURE, 0, ch))
+                return True
+            pid = self._profile.param_for(PRESSURE, ch, 0)
             if pid is None or pid not in self.registry:
                 return False
             self.registry.apply_midi(pid, value)
