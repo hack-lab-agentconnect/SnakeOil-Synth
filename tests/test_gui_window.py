@@ -126,7 +126,7 @@ def test_oscillator_groups_hold_their_controls(rig):
         "osc2_level", "detune2_semitones", "detune2_cents", "osc2_pwm", "osc2_octave",
     ]
     assert ids("Oscillator 1") == [
-        "osc1_level", "osc1_square", "osc1_pwm", "osc1_octave",
+        "osc1_level", "osc1_square", "osc1_square_level", "osc1_pwm", "osc1_octave",
     ]
 
 

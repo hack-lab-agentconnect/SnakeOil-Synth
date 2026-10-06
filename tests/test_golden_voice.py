@@ -6,7 +6,7 @@ from midi_synth.filters import LowPass, lpf_coefficients
 from midi_synth.oscillators import Oscillator, _poly_blep, pulse_wave, saw_wave
 from midi_synth.voice import Envelope, Voice
 from tests.reference_dsp import (
-    ref_layer_gain,
+    ref_pulse_top,
     RefEnvelope, RefLowPass, RefOscillator, RefVoice, ref_poly_blep,
     ref_pulse_wave, ref_saw_wave,
 )
@@ -175,9 +175,10 @@ def test_wave_shapes_match_reference(duty, inc):
     assert np.max(np.abs(saw_wave(t, inc) - ref_saw_wave(t, inc))) < 1e-12
     assert np.max(np.abs(pulse_wave(t, inc, duty)
                          - ref_pulse_wave(t, inc, duty))) < 1e-12
-    layered = ref_layer_gain(duty) * (ref_saw_wave(t, inc) + ref_pulse_wave(t, inc, duty))
+    layered = ref_saw_wave(t, inc) + 0.5 * ref_pulse_top(t, inc, duty)
     osc = Oscillator(SR, "saw")
     osc.layer_square = True
+    osc.square_level = 0.5
     osc.duty = duty
     assert np.max(np.abs(osc._shape(t, inc) - layered)) < 1e-12
     osc.layer_square = False
@@ -191,6 +192,7 @@ def test_wave_shapes_match_reference(duty, inc):
 def test_oscillator_generate_matches_reference(layer):
     new, ref = Oscillator(SR, "saw"), RefOscillator(SR, "saw")
     new.layer_square = ref.layer_square = layer
+    new.square_level = ref.square_level = 0.7
     new.duty = ref.duty = 0.2
     pm = np.sin(np.arange(256) * 0.05)
     for _ in range(5):
@@ -206,6 +208,7 @@ def test_oscillator_generate_matches_reference(layer):
 def _base_params():
     return {
         "osc1_level": 1.0, "osc2_level": 0.0, "osc1_square": True,
+        "osc1_square_level": 0.5,
         "osc1_pwm": 0.0, "osc2_pwm": 0.0, "mod_mode": "off", "fm_depth": 0.0,
         "mod_index": 0.0, "detune2_semitones": 0.0, "detune2_cents": 0.0,
         "osc1_octave_down": False, "osc2_octave_up": True, "pitch_ratio": 1.0,
@@ -253,6 +256,7 @@ def _random_params(rng):
         osc1_level=float(rng.choice([0.0, 0.5, 1.0, rng.uniform(0, 1)])),
         osc2_level=float(rng.choice([0.0, 0.0, 1.0, rng.uniform(0, 1)])),
         osc1_square=bool(rng.random() < 0.5),
+        osc1_square_level=float(rng.choice([0.0, 0.5, 1.0, rng.uniform(0, 1)])),
         osc1_pwm=float(rng.uniform(0.0, 0.5)),
         osc2_pwm=float(rng.uniform(0.0, 0.5)),
         mod_mode=str(rng.choice(MODES)),

@@ -13,9 +13,10 @@ toggleable effects chain.
   channel aftertouch and MIDI clock.
 - **Two oscillators** (band-limited with PolyBLEP): osc 1 is a saw with an optional square
   layer (on by default); osc 2 is a square. Both squares have **PWM** (0-0.5, 0.5 = plain
-  square; default 0 = narrowest pulse). Osc 1's square layer is loudness-matched to the
-  saw (toggling it changes the tone, not the volume), and very narrow or wide pulses are
-  normalised automatically. Osc 2 has **coarse** (-12..+12 semitones) and
+  square; default 0 = narrowest pulse). Osc 1's square layer is Juno-style: the pulse is
+  derived from the same ramp as the saw, high at the top of the rising ramp, and added on
+  top of the untouched saw at the **Sq Level** (0-1, default 0.5). It adds loudness, more as
+  PWM widens (PWM 0 is a thin spike that adds little level). Osc 2 has **coarse** (-12..+12 semitones) and
   **fine** (+/-0.5 cents) tuning. **Octave switches:** osc 1 one octave down, osc 2 one
   octave up (on by default).
 - **Modulation modes** (osc 1 -> osc 2): off, FM (phase modulation), AM, ring and hard sync,
@@ -308,7 +309,7 @@ An interactive console starts alongside the audio. Type `help`. Commands:
 | `pingpong <on\|off>` | bounce delay echoes between left and right |
 | `reverbamt <0-1>` | reverb wet amount |
 | `crush <0-1>` | bitcrush amount (bit depth and downsampling) |
-| `square <on\|off>` | osc 1 square layer over the saw |
+| `square <on\|off> [level]` | osc 1 square layer added to the saw; optional level 0-1 (default 0.5) |
 | `pwm1` / `pwm2 <0-0.5>` | pulse width (osc 1 square layer / osc 2); 0.5 = plain square |
 | `level1` / `level2 <0-1>` | oscillator mix level (osc 2 starts at 0) |
 | `mode <off\|fm\|am\|ring\|sync>` | how osc 1 modulates osc 2 |
@@ -377,7 +378,7 @@ This is the seeded `Default` profile; it is now editable via MIDI learn.
 | CC 74 | low-pass cutoff (log scale) |
 | Pitch wheel | pitch bend (±2 semitones) |
 
-The square layer and PWM controls have no default CC; assign them with MIDI learn.
+The square layer, Sq Level and PWM controls have no default CC; assign them with MIDI learn.
 
 Toggle CCs act on press (value ≥ 64) with edge detection. Profiles saved before the
 low-pass filter was added do not have CC 71 and CC 74; use the toolbar's Reset to get them.

@@ -1,4 +1,5 @@
 import argparse
+import math
 import sys
 import time
 from pathlib import Path
@@ -133,7 +134,7 @@ HELP_TEXT = """commands:
   pingpong <on|off>          bounce delay echoes between left and right
   reverbamt <0-1>            reverb wet amount
   crush <0-1>                bitcrush amount (bit depth and downsampling)
-  square <on|off>            osc 1 square layer over the saw
+  square <on|off> [level]    osc 1 square layer added to the saw; level 0-1 (default 0.5)
   pwm1/pwm2 <0-0.5>          pulse width (osc 1 square layer / osc 2); 0.5 = square
   level1/level2 <0-1>        oscillator mix level (osc2 starts at 0)
   mode <off|fm|am|ring|sync> how osc1 modulates osc2
@@ -324,12 +325,23 @@ def console_loop(engine, registry=None, patch_store=None, patch_defaults=None,
                 engine.set_delay_time(min(max(float(parts[1]), 200.0), 4000.0))
             elif cmd in ("pingpong", "square", "oct1", "oct2"):
                 on = parse_on_off(parts[1]) if len(parts) > 1 else None
+                level = None
+                if cmd == "square" and on is not None and len(parts) > 2:
+                    try:
+                        level = float(parts[2])
+                    except ValueError:
+                        on = None
+                    if len(parts) > 3 or (level is not None and not math.isfinite(level)):
+                        on = None
                 if on is None:
-                    print("usage: %s <on|off>" % cmd)
+                    print("usage: square <on|off> [level]" if cmd == "square"
+                          else "usage: %s <on|off>" % cmd)
                 elif cmd == "pingpong":
                     engine.set_delay_pingpong(on)
                 elif cmd == "square":
                     engine.set_osc1_square(on)
+                    if level is not None:
+                        engine.set_osc1_square_level(level)
                 elif cmd == "oct1":
                     engine.set_osc1_octave_down(on)
                 else:

@@ -2,7 +2,7 @@ import math
 
 import numpy as np
 
-from .config import FLT_ENV_OCTAVES, FLT_VEL_OCTAVES
+from .config import DEFAULT_SQUARE_LEVEL, FLT_ENV_OCTAVES, FLT_VEL_OCTAVES
 from .filters import LPF_MAX_HZ, LPF_MIN_HZ, LowPass, lpf_coefficients
 
 ATTACK, DECAY, SUSTAIN, RELEASE, IDLE = range(5)
@@ -183,6 +183,7 @@ class Voice:
 
     def render(self, n, params):
         self.osc1.layer_square = params["osc1_square"]
+        self.osc1.square_level = params.get("osc1_square_level", DEFAULT_SQUARE_LEVEL)
         lfo_pwm = params.get("lfo_pwm", 0.0)
         if lfo_pwm:
             self.osc1.duty = min(max(params["osc1_pwm"] + lfo_pwm, 0.0), 0.5)

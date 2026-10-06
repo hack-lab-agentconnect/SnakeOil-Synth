@@ -5,6 +5,7 @@ MAX_VOICES = 12
 MIN_DUTY = 0.02
 DEFAULT_DUTY = 0.5
 DEFAULT_PWM = 0.0
+DEFAULT_SQUARE_LEVEL = 0.5
 
 MODES = ("off", "fm", "am", "ring", "sync")
 DEFAULT_MODE = "fm"

@@ -11,6 +11,7 @@ def make():
 def test_engine_param_defaults():
     p = make().params
     assert p["osc1_square"] is True
+    assert p["osc1_square_level"] == 0.5
     assert p["osc1_pwm"] == 0.0
     assert p["osc2_pwm"] == 0.0
     assert p["osc2_octave_up"] is True
@@ -22,6 +23,7 @@ def test_engine_param_defaults():
 def test_registry_defaults():
     reg = build_registry(make())
     assert reg.get("osc1_square") is True
+    assert reg.get("osc1_square_level") == 0.5
     assert reg.get("osc1_pwm") == 0.0
     assert reg.get("osc2_pwm") == 0.0
     assert reg.get("osc2_octave") is True

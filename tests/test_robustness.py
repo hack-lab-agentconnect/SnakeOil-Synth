@@ -105,3 +105,18 @@ def test_console_fx_parsing(monkeypatch, capsys):
     assert calls == [("set_effect", ("chorus", True)), ("set_effect", ("delay", False)),
                      ("toggle_effect", ("reverb",)), ("toggle_effect", ("reverb",))]
     assert out.count("usage: fx") == 1
+
+
+def test_console_square_accepts_optional_level(monkeypatch, capsys):
+    calls, out = drive(monkeypatch, capsys, ["square on 0.8", "square off 0", "square on"])
+    assert calls == [("set_osc1_square", (True,)), ("set_osc1_square_level", (0.8,)),
+                     ("set_osc1_square", (False,)), ("set_osc1_square_level", (0.0,)),
+                     ("set_osc1_square", (True,))]
+    assert "usage" not in out
+
+
+@pytest.mark.parametrize("line", ["square on abc", "square on 0.5 1", "square on nan", "square maybe 0.5"])
+def test_console_square_rejects_bad_level(monkeypatch, capsys, line):
+    calls, out = drive(monkeypatch, capsys, [line])
+    assert calls == []
+    assert "usage: square <on|off> [level]" in out

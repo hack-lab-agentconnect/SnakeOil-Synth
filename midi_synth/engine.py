@@ -17,6 +17,7 @@ from .config import (
     CENTS_MAX,
     LPF_MODES,
     DEFAULT_PWM,
+    DEFAULT_SQUARE_LEVEL,
     DEFAULT_LPF_MODE,
     DEFAULT_LPF_CUTOFF,
     DEFAULT_ADSR,
@@ -66,6 +67,7 @@ class SynthEngine:
             "osc1_level": 1.0,
             "osc2_level": 0.0,
             "osc1_square": True,
+            "osc1_square_level": DEFAULT_SQUARE_LEVEL,
             "osc1_pwm": DEFAULT_PWM,
             "osc2_pwm": DEFAULT_PWM,
             "mod_mode": DEFAULT_MODE,
@@ -131,6 +133,10 @@ class SynthEngine:
     def set_osc1_square(self, on):
         with self.lock:
             self.params["osc1_square"] = bool(on)
+
+    def set_osc1_square_level(self, level):
+        with self.lock:
+            self.params["osc1_square_level"] = min(max(float(level), 0.0), 1.0)
 
     def set_osc1_pwm(self, duty):
         with self.lock:
@@ -618,6 +624,7 @@ class SynthEngine:
             return {
                 "osc1_level": self.params["osc1_level"],
                 "osc1_square": self.params["osc1_square"],
+                "osc1_square_level": self.params["osc1_square_level"],
                 "osc1_pwm": self.params["osc1_pwm"],
                 "osc2_level": self.params["osc2_level"],
                 "osc2_pwm": self.params["osc2_pwm"],

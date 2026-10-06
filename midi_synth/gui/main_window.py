@@ -29,7 +29,7 @@ GROUP_POSITIONS = {
 }
 
 # Groups whose controls wrap onto a new row after this many columns.
-GROUP_COLUMNS = {"Filter": 3, "LFO": 2}
+GROUP_COLUMNS = {"Oscillator 1": 3, "Filter": 3, "LFO": 2}
 
 # Groups laid out as toggle "blocks": each toggle heads a block whose
 # dependent controls (Param.under) sit in a row beneath it.

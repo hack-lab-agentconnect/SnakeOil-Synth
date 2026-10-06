@@ -1,8 +1,6 @@
-import math
-
 import numpy as np
 
-from .config import DEFAULT_DUTY, MIN_DUTY
+from .config import DEFAULT_DUTY, DEFAULT_SQUARE_LEVEL, MIN_DUTY
 
 
 def _poly_blep(t, dt):
@@ -27,16 +25,15 @@ def pulse_wave(t, inc, duty):
     return _pulse_from_edges(t, duty, _poly_blep(t, inc), inc)
 
 
-def layer_gain(duty):
-    """Gain that makes saw + pulse (duty clamped like pulse_wave) match the saw's RMS.
+def _top_pulse(t, inc, duty, blep_t):
+    """Juno-style pulse: the saw's ramp compared with a threshold, high for t >= 1 - duty.
 
-    For the saw (variance 1/3) and the pulse of effective duty d, var(pulse) = d / (1 - d)
-    and cov(saw, pulse) = -d, so var(saw + pulse) = 1/3 + d / (1 - d) - 2d.
+    The falling edge is the saw's wrap, so the saw's `blep_t` is reused for it.
     """
     d = min(max(duty, MIN_DUTY), 0.5)
-    if d >= 0.5:
-        return 1.0
-    return math.sqrt((1.0 / 3.0) / (1.0 / 3.0 + d / (1.0 - d) - 2.0 * d))
+    s = np.where(t >= 1.0 - d, 1.0, -1.0)
+    s = s + _poly_blep(np.mod(t + d, 1.0), inc) - blep_t
+    return (s - (2.0 * d - 1.0)) / (2.0 - 2.0 * d)
 
 
 _WAVEFORMS = ("saw", "square")
@@ -51,6 +48,7 @@ class Oscillator:
         self.phase = 0.0
         self.duty = DEFAULT_DUTY
         self.layer_square = False
+        self.square_level = DEFAULT_SQUARE_LEVEL
 
     def reset(self):
         self.phase = 0.0
@@ -59,10 +57,8 @@ class Oscillator:
         if self.waveform == "saw":
             b0 = _poly_blep(t, inc)
             saw = 2.0 * t - 1.0 - b0
-            if self.layer_square:
-                duty = min(max(self.duty, MIN_DUTY), 0.5)
-                pulse = _pulse_from_edges(t, duty, b0, inc)
-                return layer_gain(duty) * (saw + pulse)
+            if self.layer_square and self.square_level > 0.0:
+                return saw + self.square_level * _top_pulse(t, inc, self.duty, b0)
             return saw
         return pulse_wave(t, inc, self.duty)
 

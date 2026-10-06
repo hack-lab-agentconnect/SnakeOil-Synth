@@ -4,7 +4,7 @@ import numpy as np
 
 import math
 
-from midi_synth.config import DEFAULT_DUTY, MIN_DUTY
+from midi_synth.config import DEFAULT_DUTY, DEFAULT_SQUARE_LEVEL, MIN_DUTY
 from midi_synth.filters import lpf_coefficients  # noqa: F401  (math is unchanged)
 from midi_synth.voice import midi_note_to_freq, semitones_to_ratio
 
@@ -410,12 +410,13 @@ def ref_pulse_wave(t, inc, duty):
 _WAVEFORMS = ("saw", "square")
 
 
-def ref_layer_gain(duty):
-    # 2026-10-05: intentional change (RMS-matched layer gain), replaces the old constant 0.6.
+def ref_pulse_top(t, inc, duty):
+    # 2026-10-05: intentional change. Juno-style additive layer replaces the RMS-matched gain:
+    # the pulse is the same ramp compared with a threshold, so it is high at the top (t >= 1 - d).
     d = min(max(duty, MIN_DUTY), 0.5)
-    if d >= 0.5:
-        return 1.0
-    return math.sqrt((1.0 / 3.0) / (1.0 / 3.0 + d / (1.0 - d) - 2.0 * d))
+    s = np.where(t >= 1.0 - d, 1.0, -1.0)
+    s = s + ref_poly_blep(np.mod(t + d, 1.0), inc) - ref_poly_blep(t, inc)
+    return (s - (2.0 * d - 1.0)) / (2.0 - 2.0 * d)
 
 
 class RefOscillator:
@@ -427,6 +428,7 @@ class RefOscillator:
         self.phase = 0.0
         self.duty = DEFAULT_DUTY
         self.layer_square = False
+        self.square_level = DEFAULT_SQUARE_LEVEL
 
     def reset(self):
         self.phase = 0.0
@@ -434,8 +436,8 @@ class RefOscillator:
     def _shape(self, t, inc):
         if self.waveform == "saw":
             saw = ref_saw_wave(t, inc)
-            if self.layer_square:
-                return ref_layer_gain(self.duty) * (saw + ref_pulse_wave(t, inc, self.duty))
+            if self.layer_square and self.square_level > 0.0:
+                return saw + self.square_level * ref_pulse_top(t, inc, self.duty)
             return saw
         return ref_pulse_wave(t, inc, self.duty)
 
@@ -489,6 +491,7 @@ class RefVoice:
 
     def render(self, n, params):
         self.osc1.layer_square = params["osc1_square"]
+        self.osc1.square_level = params.get("osc1_square_level", DEFAULT_SQUARE_LEVEL)
         self.osc1.duty = params["osc1_pwm"]
         self.osc2.duty = params["osc2_pwm"]
         freq = self.freq * params["pitch_ratio"]

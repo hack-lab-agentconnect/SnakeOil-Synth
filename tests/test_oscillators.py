@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from midi_synth.config import DEFAULT_DUTY, MIN_DUTY
+from midi_synth.config import DEFAULT_DUTY, DEFAULT_SQUARE_LEVEL, MIN_DUTY
 from midi_synth.engine import SynthEngine
 from midi_synth.oscillators import Oscillator, pulse_wave, saw_wave
 
@@ -23,6 +23,7 @@ def test_unknown_waveform_rejected():
     assert Oscillator(SR, "saw").waveform == "saw"
     assert Oscillator(SR, "square").duty == DEFAULT_DUTY
     assert Oscillator(SR, "saw").layer_square is False
+    assert Oscillator(SR, "saw").square_level == DEFAULT_SQUARE_LEVEL
 
 
 def test_pulse_at_half_duty_is_plain_square():
@@ -89,8 +90,8 @@ def test_layer_toggle_changes_output_and_is_bounded():
     osc.layer_square = True
     raw = osc.generate(440.0, 4096)
     assert np.all(np.isfinite(raw))
-    assert np.max(np.abs(raw)) < 1.3
-    assert np.max(np.abs(raw)) > 0.9  # RMS-matched layer peaks near the saw's
+    assert np.max(np.abs(raw)) < 1.6
+    assert np.max(np.abs(raw)) > 1.1  # the additive layer peaks above the plain saw
 
 
 def bin_mag(signal, freq):
@@ -125,6 +126,7 @@ def test_engine_pwm_reaches_voice_oscillators():
     assert v.osc2.duty == 0.25
     assert v.osc1.duty == 0.1
     assert v.osc1.layer_square is True
+    assert v.osc1.square_level == DEFAULT_SQUARE_LEVEL
     assert v.osc1.waveform == "saw" and v.osc2.waveform == "square"
 
 
@@ -159,3 +161,24 @@ def test_extreme_pwm_with_all_modes_is_finite():
             for _ in range(4):
                 out = e.render(BLOCK)
                 assert np.all(np.isfinite(out))
+
+
+def test_voice_pushes_square_level_each_block():
+    e = SynthEngine(sr=SR, block_size=BLOCK, max_voices=2)
+    e.set_osc1_square_level(0.8)
+    e.note_on(60, 100)
+    e.render(BLOCK)
+    v = next(v for v in e.voices if v.active)
+    assert v.osc1.square_level == 0.8
+    e.set_osc1_square_level(0.2)
+    e.render(BLOCK)
+    assert v.osc1.square_level == 0.2
+
+
+def test_square_level_zero_engine_output_matches_layer_off():
+    a = SynthEngine(sr=SR, block_size=BLOCK, max_voices=2)
+    b = SynthEngine(sr=SR, block_size=BLOCK, max_voices=2)
+    a.set_osc1_square(False)
+    b.set_osc1_square(True)
+    b.set_osc1_square_level(0.0)
+    assert np.array_equal(render_osc1(a), render_osc1(b))
