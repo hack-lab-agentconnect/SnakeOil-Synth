@@ -131,7 +131,7 @@ def test_registry_params():
     assert (w.kind, w.group, w.label, w.choices) == (CHOICE, "LFO 1", "Wave", WAVES)
     assert reg.get("lfo_wave") == "sine"
     t = reg["lfo_dest"]
-    assert (t.kind, t.group, t.label, t.choices) == (CHOICE, "LFO 1", "Dest", DESTS)
+    assert (t.kind, t.group, t.label, t.choices) == (CHOICE, "LFO 1", "Dest", DESTS + ("lfo2-rate",))
     assert reg.get("lfo_dest") == "pitch"
     g = reg["glide_time"]
     assert (g.kind, g.group, g.label, g.scale, g.fmt, g.minimum, g.maximum) == (
@@ -436,8 +436,8 @@ def test_gui_has_lfo_and_glide_groups(tmp_path):
     store = ProfileStore(tmp_path / "cfg")
     router = MidiRouter(reg, store.open_active())
     window = MainWindow(e, reg, router, store, [], Bridge(reg, router))
-    assert "LFO 1" in GROUP_POSITIONS and "Glide" in GROUP_POSITIONS
+    assert "LFO" in GROUP_POSITIONS and "Glide" in GROUP_POSITIONS
     assert set(window.controls) == set(reg.ids())
     titles = {b.title() for b in window.findChildren(QGroupBox)}
-    assert {"LFO 1", "LFO 2", "Glide"} <= titles
+    assert {"LFO", "Glide"} <= titles
     window.close()

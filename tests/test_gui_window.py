@@ -233,7 +233,9 @@ def test_every_group_present_and_controls_do_not_overlap(rig):
     _, registry, _, _, window = rig
     _fit(window, 1700, 1000)
     boxes = {b.title(): b for b in window.findChildren(QGroupBox)}
-    assert set(boxes) == {p.group for p in registry} == set(GROUP_POSITIONS)
+    from midi_synth.gui.main_window import MERGED_GROUPS
+    shown = {MERGED_GROUPS.get(p.group, (p.group,))[0] for p in registry}
+    assert set(boxes) == shown == set(GROUP_POSITIONS)
     for title, box in boxes.items():
         controls = [c for c in box.findChildren(ParamControl)]
         assert controls

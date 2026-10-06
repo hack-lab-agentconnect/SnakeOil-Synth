@@ -23,21 +23,31 @@ GROUP_POSITIONS = {
     "Filter": (1, 0, 1, 1),
     "Filter Env": (1, 1, 1, 1),
     "Amp Envelope": (1, 2, 1, 1),
-    "LFO 1": (1, 3, 1, 1),
-    "LFO 2": (1, 4, 1, 1),
+    "LFO": (1, 3, 1, 1),
     "Effects": (2, 0, 1, 3),
     "Unison": (2, 3, 1, 1),
     "Glide": (2, 4, 1, 1),
 }
 
 # Groups whose controls wrap onto a new row after this many columns.
-GROUP_COLUMNS = {"Oscillator 1": 3, "Filter": 3, "LFO 1": 1, "LFO 2": 1}
+GROUP_COLUMNS = {"Oscillator 1": 3, "Filter": 3}
+
+# Registry groups shown inside another group's box: registry group ->
+# (box title, stack index). Each stack is one vertical column under a header
+# label carrying the registry group's name. Patches and the registry keep the
+# original group names.
+MERGED_GROUPS = {"LFO 1": ("LFO", 0), "LFO 2": ("LFO", 1)}
+
+# Grid cell (row, column, rowspan, colspan) freed by the LFO merge, reserved
+# for the Mod Matrix group.
+MOD_MATRIX_CELL = (1, 4, 1, 1)
 
 # Groups laid out as toggle "blocks": each toggle heads a block whose
 # dependent controls (Param.under) sit in a row beneath it.
 BLOCK_GROUPS = ("Effects",)
 BLOCK_MAX_COLUMNS = 6
 
+STACK_COMBO_CHARS = 9
 MIN_WINDOW_SIZE = (640, 420)
 METER_INTERVAL_MS = 33
 
@@ -194,17 +204,33 @@ class MainWindow(QMainWindow):
         columns = {}
         members = {}
         widths = self._block_widths()
+        stack_rows = {}
         for param in self.registry:
-            box = groups.get(param.group)
+            title, stack = MERGED_GROUPS.get(param.group, (param.group, None))
+            box = groups.get(title)
             if box is None:
-                box = QGroupBox(param.group)
+                box = QGroupBox(title)
                 box.setLayout(QGridLayout())
-                groups[param.group] = box
+                groups[title] = box
             control = ParamControl(self.registry, param)
             control.learnRequested.connect(self._on_learn_requested)
             control.clearRequested.connect(self._on_clear_requested)
             cells = columns.setdefault(param.group, {})
             self.controls[param.id] = control
+            if stack is not None:
+                if param.group not in stack_rows:
+                    header = QLabel(param.group)
+                    header.setAlignment(Qt.AlignHCenter)
+                    box.layout().addWidget(header, 0, stack)
+                if isinstance(control.editor, QComboBox):
+                    # keep two side-by-side stacks narrow
+                    control.editor.setSizeAdjustPolicy(
+                        QComboBox.AdjustToMinimumContentsLengthWithIcon)
+                    control.editor.setMinimumContentsLength(STACK_COMBO_CHARS)
+                row = stack_rows[param.group] = stack_rows.get(param.group, 0) + 1
+                box.layout().addWidget(control, row, stack)
+                cells[param.id] = (row, stack)
+                continue
             if param.group in BLOCK_GROUPS:
                 self._place_block(box, param, control, cells, members, widths)
                 continue

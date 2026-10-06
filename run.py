@@ -151,8 +151,9 @@ HELP_TEXT = """commands:
   fltenv <-1..1>             filter envelope amount (per-voice filter)
   lfo <rate> <depth> [wave] [dest]  LFO: 0.05-20 Hz, depth 0-1 (0 = off),
                              wave sine|triangle|saw|square|random|random-glide,
-                             dest pitch|filter|pwm|amp
-  lfo2 <rate> <depth> [wave] [dest]  second LFO, same arguments (default dest filter)
+                             dest pitch|filter|pwm|amp|lfo2-rate (LFO 1 speeds/slows LFO 2)
+  lfo2 <rate> <depth> [wave] [dest]  second LFO, same arguments (default dest filter;
+                             dest also lfo1-rate)
   glide <seconds>            slide between notes, 0-2 s (0 = off)
   unison <1-12> [detune_cents] [spread]  stack voices per note (polyphony = 12 // width);
                              detune 0-50 cents, spread 0-1

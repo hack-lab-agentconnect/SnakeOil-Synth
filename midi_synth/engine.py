@@ -25,7 +25,11 @@ from .config import (
     DEFAULT_FLT_ENV,
     FIXED_VELOCITY,
     LFO_WAVES,
-    LFO_DESTS,
+    LFO1_DESTS,
+    LFO2_DESTS,
+    LFO_RATE_MOD_OCTAVES,
+    LFO_RATE_FLOOR,
+    LFO_RATE_CEIL,
     LFO_RATE_MIN,
     LFO_RATE_MAX,
     DEFAULT_LFO_RATE,
@@ -122,6 +126,9 @@ class SynthEngine:
         }
         self.lfo = LFO()
         self.lfo2 = LFO(seed=2)
+        # last block value of each LFO, and the rate each actually ran at
+        self._lfo_last = [0.0, 0.0]
+        self.lfo_rate_eff = [DEFAULT_LFO_RATE, DEFAULT_LFO_RATE]
         self.tempo = TempoTracker()
         self.delay_manual_ms = self.effects.delay.time_ms
         self._last_freq = None
@@ -291,6 +298,7 @@ class SynthEngine:
         p["lfo_filter_oct"] = 0.0
         p["lfo_pwm"] = 0.0
         p["lfo_amp"] = None
+        self._lfo_last = [0.0, 0.0]
 
     def set_lfo_rate(self, hz):
         self._set_unit("lfo_rate", hz, LFO_RATE_MIN, LFO_RATE_MAX)
@@ -308,8 +316,8 @@ class SynthEngine:
             return wave
 
     def set_lfo_dest(self, dest):
-        if dest not in LFO_DESTS:
-            raise ValueError("unknown LFO destination: %r (choose from %s)" % (dest, ", ".join(LFO_DESTS)))
+        if dest not in LFO1_DESTS:
+            raise ValueError("unknown LFO destination: %r (choose from %s)" % (dest, ", ".join(LFO1_DESTS)))
         with self.lock:
             self.params["lfo_dest"] = dest
             self._clear_lfo_mod()
@@ -331,8 +339,8 @@ class SynthEngine:
             return wave
 
     def set_lfo2_dest(self, dest):
-        if dest not in LFO_DESTS:
-            raise ValueError("unknown LFO destination: %r (choose from %s)" % (dest, ", ".join(LFO_DESTS)))
+        if dest not in LFO2_DESTS:
+            raise ValueError("unknown LFO destination: %r (choose from %s)" % (dest, ", ".join(LFO2_DESTS)))
         with self.lock:
             self.params["lfo2_dest"] = dest
             self._clear_lfo_mod()
@@ -578,13 +586,25 @@ class SynthEngine:
         """
         p = self.params
         seen = set()
-        for lfo, pre in ((self.lfo, "lfo"), (self.lfo2, "lfo2")):
+        last = self._lfo_last
+        cur = [0.0, 0.0]
+        stages = ((self.lfo, "lfo", "lfo2-rate"), (self.lfo2, "lfo2", "lfo1-rate"))
+        for i, (lfo, pre, cross) in enumerate(stages):
             depth = p[pre + "_depth"]
             if not depth > 0.0:
+                self.lfo_rate_eff[i] = p[pre + "_rate"]
                 continue
             dest = p[pre + "_dest"]
+            rate = p[pre + "_rate"]
+            o = 1 - i
+            opre = stages[o][1]
+            if p[opre + "_depth"] > 0.0 and p[opre + "_dest"] == stages[o][2]:
+                rate *= 2.0 ** (p[opre + "_depth"] * last[o] * LFO_RATE_MOD_OCTAVES)
+                rate = min(max(rate, LFO_RATE_FLOOR), LFO_RATE_CEIL)
+            self.lfo_rate_eff[i] = rate
             mid, arr = lfo.next_block(
-                n, self.sr, p[pre + "_rate"], p[pre + "_wave"], want_array=dest == "amp")
+                n, self.sr, rate, p[pre + "_wave"], want_array=dest == "amp")
+            cur[i] = mid
             first = dest not in seen
             seen.add(dest)
             if dest == "pitch":
@@ -596,9 +616,11 @@ class SynthEngine:
             elif dest == "pwm":
                 off = depth * LFO_PWM_RANGE * mid
                 p["lfo_pwm"] = off if first else p["lfo_pwm"] + off
-            else:
+            elif dest == "amp":
                 gain = 1.0 - depth * (0.5 - 0.5 * arr)
                 p["lfo_amp"] = gain if first else p["lfo_amp"] * gain
+            # lfo1-rate / lfo2-rate publish nothing: they only steer the other LFO
+        self._lfo_last = cur
         return "filter" in seen
 
     def _master_lfo_coeffs(self):

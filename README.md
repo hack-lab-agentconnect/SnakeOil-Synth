@@ -47,10 +47,11 @@ The groups sit on a grid:
 | | Col 1 | Col 2 | Col 3 | Col 4 | Col 5 |
 |---|---|---|---|---|---|
 | Row 1 | Oscillator 1 | Oscillator 2 | Modulation | Master (volume, velocity, level meter) | Tempo |
-| Row 2 | Filter (incl. env amount, key track, velocity) | Filter Env | Amp Envelope | LFO 1 | LFO 2 |
+| Row 2 | Filter (incl. env amount, key track, velocity) | Filter Env | Amp Envelope | LFO (LFO 1 and LFO 2 side by side) | *(free)* |
 | Row 3 | Effects (spans columns 1-3) | | | Unison | Glide |
 
-Each LFO group is a single column: Rate, Depth, Wave and Dest from top to bottom.
+The *LFO* box holds two vertical stacks side by side, *LFO 1* and *LFO 2*, each with Rate, Depth, Wave
+and Dest from top to bottom under its header. The cell to its right (row 2, column 5) is free.
 
 In *Effects* every toggle (Chorus, Delay, Reverb, Bitcrush) heads a block with its dials in
 a row beneath it: Chorus has Depth; Delay has Time, Ping-pong, Feedback, Tone, Sync and
@@ -218,18 +219,24 @@ per-voice filter only; with *Master-bus filter* on they are ignored. A cutoff pu
 
 ## LFO and glide
 
-- **LFO 1 and LFO 2** (*LFO 1* and *LFO 2* groups): two global low-frequency oscillators
+- **LFO 1 and LFO 2** (the *LFO* box, with an *LFO 1* and an *LFO 2* stack): two global low-frequency oscillators
   shared by all voices, with identical controls. Each has its own
   *Rate* 0.05-20 Hz, *Depth* 0-1 (default 0 = off, the LFO does no work at all),
   *Wave* sine, triangle, saw, square, random (sample and hold, one new value per cycle) or random-glide
   (one new random target per cycle, reached with a smooth cosine glide),
-  *Dest* pitch, filter, pwm or amp. At full depth the destinations move: pitch by up to
+  *Dest* pitch, filter, pwm, amp, or the rate of the other LFO (`lfo2-rate` for LFO 1, `lfo1-rate`
+  for LFO 2). At full depth the destinations move: pitch by up to
   +/-2 semitones, filter cutoff by +/-3 octaves, pulse width of both oscillators by
   +/-0.25 (clamped to 0-0.5), and volume as tremolo from full level down to silence.
   LFO 2 defaults to depth 0 (off) and destination filter; its random wave differs from
   LFO 1's. When both LFOs target the same destination they combine: pitch (semitones),
   filter (octaves) and pulse-width offsets add, and volume gains multiply. An LFO at
   depth 0 does no work, and with both off nothing is modulated.
+  **Rate cross-modulation:** with Dest `lfo2-rate` (LFO 1) or `lfo1-rate` (LFO 2), the LFO
+  steers the other LFO's speed instead of the sound: `rate = base_rate * 2 ** (depth * lfo_value * 2)`,
+  i.e. up to +/-2 octaves at full depth, clamped to 0.01-40 Hz. LFO 1 runs before LFO 2 in each
+  block, and each one reads the other's value from the previous block, so mutual modulation is
+  stable. The other LFO still drives its own destination as usual.
   The pitch-bend wheel is unaffected. Console: `lfo <rate> <depth> [wave] [dest]` and
   `lfo2 <rate> <depth> [wave] [dest]`.
 - **Glide** (*Glide* group): *Time* 0-2 s (default 0 = off) slides each new note from the
@@ -348,8 +355,8 @@ An interactive console starts alongside the audio. Type `help`. Commands:
 | `adsr <a> <d> <s> <r>` | amp envelope: attack, decay in s (0.001-5), sustain 0-1, release in s (0.001-10) |
 | `velocity <on\|off>` | off = every note plays at one fixed velocity |
 | `fltenv <-1..1>` | filter envelope amount (per-voice filter; default 0) |
-| `lfo <rate> <depth> [wave] [dest]` | LFO 1: 0.05-20 Hz, depth 0-1 (0 = off); wave sine\|triangle\|saw\|square\|random\|random-glide; dest pitch\|filter\|pwm\|amp |
-| `lfo2 <rate> <depth> [wave] [dest]` | LFO 2, same arguments (default dest filter) |
+| `lfo <rate> <depth> [wave] [dest]` | LFO 1: 0.05-20 Hz, depth 0-1 (0 = off); wave sine\|triangle\|saw\|square\|random\|random-glide; dest pitch\|filter\|pwm\|amp\|lfo2-rate |
+| `lfo2 <rate> <depth> [wave] [dest]` | LFO 2, same arguments (default dest filter; dest also lfo1-rate) |
 | `glide <seconds>` | slide between notes, 0-2 s (0 = off) |
 | `unison <1-12> [detune_cents] [spread]` | stack voices per note (polyphony = 12 // width); detune 0-50 cents, spread 0-1 |
 | `tempo <40-240>` | manual tempo in BPM (used when no MIDI clock arrives) |

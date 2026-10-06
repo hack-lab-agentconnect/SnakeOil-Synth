@@ -8,6 +8,7 @@ from midi_synth.patches import apply, capture
 SR, BLOCK = 44100, 256
 DET_WAVES = ("sine", "triangle", "saw", "square")
 DESTS = ("pitch", "filter", "pwm", "amp")
+DESTS2 = DESTS + ("lfo1-rate",)
 
 
 def make_engine(**setup):
@@ -59,7 +60,7 @@ def test_registry():
     assert (reg["lfo2_depth"].minimum, reg["lfo2_depth"].maximum) == (0.0, 1.0)
     assert reg["lfo2_wave"].kind == CHOICE
     assert reg["lfo2_wave"].choices == ("sine", "triangle", "saw", "square", "random", "random-glide")
-    assert reg["lfo2_dest"].choices == DESTS
+    assert reg["lfo2_dest"].choices == DESTS2
     assert (reg.get("lfo2_rate"), reg.get("lfo2_depth"), reg.get("lfo2_wave"),
             reg.get("lfo2_dest")) == (5.0, 0.0, "sine", "filter")
 
@@ -280,7 +281,7 @@ def test_lfo_groups_are_single_columns(window):
     for grp, pre in (("LFO 1", "lfo"), ("LFO 2", "lfo2")):
         ids = [pre + s for s in ("_rate", "_depth", "_wave", "_dest")]
         box = window.controls[ids[0]].parentWidget()
-        while box is not None and getattr(box, "title", lambda: None)() != grp:
+        while box is not None and getattr(box, "title", lambda: None)() != "LFO":
             box = box.parentWidget()
         assert box is not None
         pts = [window.controls[i].mapTo(box, QPoint(0, 0)) for i in ids]
@@ -294,9 +295,9 @@ def test_lfo_groups_are_single_columns(window):
 
 
 def test_window_hint_and_group_positions(window):
-    from midi_synth.gui.main_window import GROUP_COLUMNS, GROUP_POSITIONS
-    assert GROUP_COLUMNS["LFO 1"] == 1 and GROUP_COLUMNS["LFO 2"] == 1
-    assert "LFO" not in GROUP_COLUMNS and "LFO" not in GROUP_POSITIONS
+    from midi_synth.gui.main_window import GROUP_POSITIONS, MERGED_GROUPS
+    assert MERGED_GROUPS == {"LFO 1": ("LFO", 0), "LFO 2": ("LFO", 1)}
+    assert "LFO" in GROUP_POSITIONS and "LFO 1" not in GROUP_POSITIONS
     hint = window.sizeHint()
     assert hint.width() <= 1500 and hint.height() <= 900
     cells = set()

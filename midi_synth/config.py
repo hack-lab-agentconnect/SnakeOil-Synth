@@ -48,6 +48,11 @@ DEFAULT_FLT_ENV = {
 
 LFO_WAVES = ("sine", "triangle", "saw", "square", "random", "random-glide")
 LFO_DESTS = ("pitch", "filter", "pwm", "amp")
+LFO1_DESTS = LFO_DESTS + ("lfo2-rate",)
+LFO2_DESTS = LFO_DESTS + ("lfo1-rate",)
+LFO_RATE_MOD_OCTAVES = 2.0
+LFO_RATE_FLOOR = 0.01
+LFO_RATE_CEIL = 40.0
 LFO_RATE_MIN = 0.05
 LFO_RATE_MAX = 20.0
 DEFAULT_LFO_RATE = 5.0
