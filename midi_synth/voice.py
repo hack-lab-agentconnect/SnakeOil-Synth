@@ -2,6 +2,7 @@ import math
 
 import numpy as np
 
+from . import noise
 from .config import DEFAULT_SQUARE_LEVEL, FLT_ENV_OCTAVES, FLT_VEL_OCTAVES
 from .filters import LPF_MAX_HZ, LPF_MIN_HZ, LowPass, lpf_coefficients
 
@@ -117,6 +118,7 @@ class Voice:
         self.gain = 1.0
         self.group = None
         self.unison_pos = 0.0
+        self.noise_pos = 0
 
     @property
     def active(self):
@@ -124,7 +126,7 @@ class Voice:
 
     def note_on(self, note, velocity, order, glide_from=None, glide_time=0.0,
                 detune_cents=0.0, pan=0.0, gain=1.0, group=None,
-                random_phase=False, rng=None, unison_pos=0.0):
+                random_phase=False, rng=None, unison_pos=0.0, noise_pos=0):
         self.note = note
         self.gate = True
         self.freq = midi_note_to_freq(note)
@@ -142,6 +144,7 @@ class Voice:
         self.gain = gain
         self.group = group
         self.unison_pos = unison_pos
+        self.noise_pos = noise_pos
         if random_phase:
             self.osc1.phase = rng.random()
             self.osc2.phase = rng.random()
@@ -183,6 +186,19 @@ class Voice:
         if cutoff >= LPF_MAX_HZ / 1.01:
             return None
         return lpf_coefficients(cutoff, params["lpf_resonance"], self.sr)
+
+    def _noise_chunk(self, n, params):
+        """The next ``n`` samples of this voice's noise stream (wrapping)."""
+        tbl = noise.table(params.get("noise_color", "white"))
+        size = len(tbl)
+        pos = self.noise_pos % size
+        end = pos + n
+        if end <= size:
+            chunk = tbl[pos:end]
+        else:
+            chunk = np.take(tbl, np.arange(pos, end), mode="wrap")
+        self.noise_pos = end % size
+        return chunk
 
     def render(self, n, params):
         self.osc1.layer_square = params["osc1_square"]
@@ -249,6 +265,9 @@ class Voice:
         mix = params["osc1_level"] * mod
         if audible2:
             mix = mix + level2 * sec
+        noise_level = params.get("noise_level", 0.0)
+        if noise_level > 0.0:
+            mix = mix + noise_level * self._noise_chunk(n, params)
         if params["lpf_mode"] == "voice":
             coeffs = self._voice_coeffs(n, params)
             if coeffs is not None:

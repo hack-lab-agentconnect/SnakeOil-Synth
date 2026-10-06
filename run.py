@@ -171,6 +171,7 @@ HELP_TEXT = """commands:
   lfo2 <rate> <depth> [wave] [dest]  second LFO, same arguments (default dest filter;
                              dest also lfo1-rate)
   glide <seconds>            slide between notes, 0-2 s (0 = off)
+  noise <0-1> [white|pink|brown]  noise level mixed in per voice (0 = off) and color
   unison <1-12> [detune_cents] [spread]  stack voices per note (polyphony = 12 // width);
                              detune 0-50 cents, spread 0-1
   tempo <40-240>             manual tempo in BPM (used when no MIDI clock arrives)
@@ -455,6 +456,20 @@ def console_loop(engine, registry=None, patch_store=None, patch_defaults=None,
                 engine.set_lfo2_depth(depth)
             elif cmd == "glide":
                 engine.set_glide_time(float(parts[1]))
+            elif cmd == "noise":
+                colors = ("white", "pink", "brown")
+                try:
+                    if not 2 <= len(parts) <= 3:
+                        raise ValueError
+                    level = float(parts[1])
+                    if len(parts) == 3 and parts[2].lower() not in colors:
+                        raise ValueError
+                except ValueError:
+                    print("usage: noise <0-1> [white|pink|brown]")
+                else:
+                    engine.set_noise_level(level)
+                    if len(parts) == 3:
+                        engine.set_noise_color(parts[2].lower())
             elif cmd == "unison":
                 if len(parts) < 2 or len(parts) > 4:
                     raise ValueError("unison takes <1-12> [detune_cents] [spread]")

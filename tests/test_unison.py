@@ -401,7 +401,7 @@ def test_gui_unison_group(tmp_path):
     router = MidiRouter(reg, store.open_active())
     window = MainWindow(e, reg, router, store, [], Bridge(reg, router))
     assert "Unison" in GROUP_POSITIONS
-    cells = list(GROUP_POSITIONS.values())
+    cells = [v for k, v in GROUP_POSITIONS.items() if k != "Noise"]  # Noise shares Tempo's cell
     assert len(set(cells)) == len(cells)
     for pid in ("unison_voices", "unison_detune", "unison_spread"):
         assert pid in window.controls

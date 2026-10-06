@@ -301,7 +301,9 @@ def test_window_hint_and_group_positions(window):
     hint = window.sizeHint()
     assert hint.width() <= 1700 and hint.height() <= 900
     cells = set()
-    for r, c, rs, cs in GROUP_POSITIONS.values():
+    for name, (r, c, rs, cs) in GROUP_POSITIONS.items():
+        if name == "Noise":  # shares Tempo's cell
+            continue
         for rr in range(r, r + rs):
             for cc in range(c, c + cs):
                 assert (rr, cc) not in cells

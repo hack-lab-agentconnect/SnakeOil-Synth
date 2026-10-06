@@ -447,8 +447,9 @@ def test_gui_tempo_group_and_label(tmp_path):
     assert window.tempo_label.parent() is box
     from midi_synth.gui.main_window import GROUP_POSITIONS
 
+    # Tempo shares its cell with the Noise group only
     assert GROUP_POSITIONS["Tempo"] not in [
-        v for k, v in GROUP_POSITIONS.items() if k != "Tempo"]
+        v for k, v in GROUP_POSITIONS.items() if k not in ("Tempo", "Noise")]
     window._tick()
     assert window.tempo_label.text() == "120 BPM (manual)"
     engine.set_tempo_bpm(97.0)

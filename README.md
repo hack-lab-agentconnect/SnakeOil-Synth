@@ -25,6 +25,8 @@ toggleable effects chain.
   bypass), per voice or on the master bus, with a **filter envelope** (ADSR + amount),
   **key tracking** and **velocity-to-cutoff**.
 - **Amp envelope** (ADSR) per voice.
+- **Noise generator** (white, pink or brown) mixed in per voice, through the filter and amp
+  envelope. See [Noise](#noise).
 - Two **LFOs** (sine, triangle, saw, square, random, random-glide) to pitch, filter, pulse width or volume,
   and **glide** (portamento, optionally legato only).
 - **Unison:** up to 12 stacked voices per note with detune and stereo spread.
@@ -46,7 +48,7 @@ The groups sit on a grid:
 
 | | Col 1 | Col 2 | Col 3 | Col 4 | Col 5 |
 |---|---|---|---|---|---|
-| Row 1 | Oscillator 1 | Oscillator 2 | Modulation | Master (volume, velocity, auto limiter, level meter) | Tempo |
+| Row 1 | Oscillator 1 | Oscillator 2 | Modulation | Master (volume, velocity, auto limiter, level meter) | Tempo and Noise, side by side |
 | Row 2 | Filter (incl. env amount, key track, velocity) | Filter Env | Amp Envelope | LFO (LFO 1 and LFO 2 side by side) | Mod Matrix |
 | Row 3 | Effects (spans columns 1-3) | | | Unison | Glide |
 
@@ -294,7 +296,7 @@ In the window the *Mod Matrix* box is a small table: a header (*Source*, *Scale*
 plain drop-down. *Scale* is a horizontal bipolar slider (-100% .. +100%, centre = 0, the
 filled bar grows from the centre toward the handle, the value such as `+37%` is drawn on
 it); double-click it to reset to 0. The destination drop-down groups its entries under
-non-selectable headers (*Osc 1*, *Osc 2*, *Filter*, *Filter Env*, *Amp Env*, *Chorus*, *Delay*, *Reverb*, *Bitcrush*, *Unison*); entries without a group (*Modulation Amount*, *Tempo*)
+non-selectable headers (*Osc 1*, *Osc 2*, *Noise*, *Filter*, *Filter Env*, *Amp Env*, *Chorus*, *Delay*, *Reverb*, *Bitcrush*, *Unison*); entries without a group (*Modulation Amount*, *Tempo*)
 sit at the top level, and `none` comes first. Every control in the box
 supports MIDI learn like the rest of the window (in learn mode click a scale slider, then
 move a controller; or right-click for *MIDI Learn* / *Clear binding*); the binding is shown
@@ -324,7 +326,7 @@ Amount at 0 ...), so give it a non-zero value first. Example: Filter Cutoff at
 1000 Hz with `Mod Wheel +50%` gives 1000 Hz with the wheel down and 1500 Hz fully up.
 
 Destinations so far: `Osc 1: Level`, `Osc 1: PWM`, `Osc 1: Sq Level`,
-`Osc 2: Level`, `Osc 2: Tune`, `Osc 2: Fine`, `Osc 2: PWM`, `Modulation Amount`,
+`Osc 2: Level`, `Osc 2: Tune`, `Osc 2: Fine`, `Osc 2: PWM`, `Noise: Level`, `Modulation Amount`,
 `Tempo`, `Filter: Cutoff`, `Filter: Resonance` (per voice or on the master bus, where
 Note Number means the last played note), `Filter: Env Amount`,
 `Filter: Key Trk`, `Filter: Vel>Cut`, `Filter Env: Attack/Decay/Sustain/Release`,
@@ -374,6 +376,26 @@ e.g. `mod 1 lfo1 40 filter:cutoff` or `mod 2 note -25 osc1:level`. Sources are
 spaces removed (`filter:vel>cut`, `modulationamount`), case-insensitive.
 `mod clear [slot]` empties one row or all of them. (`mod <0-1>` with a single
 number still sets the modulation amount.)
+
+## Noise
+
+The *Noise* group (next to *Tempo*, top right) mixes a noise generator in with the
+oscillators. Each voice has its own noise stream, so the noise goes through the same
+low-pass filter and amp envelope as the oscillators (a short envelope gives percussive
+noise bursts, a filter envelope sweeps it) and unison voices get different noise.
+
+- **Level** 0-1 (default 0 = off; with 0 the voices do no noise work and the sound is
+  unchanged). Level 1.0 is noise with an RMS of 0.5 before the envelope, the same for
+  every color, so switching color does not change the loudness.
+- **Color:** *white* is a flat, bright hiss; *pink* falls 3 dB per octave (softer, like
+  rain or wind); *brown* falls 6 dB per octave (a dark rumble).
+- Modulation: the mod matrix destination `Noise: Level` (relative, so a base level of 0
+  stays 0).
+- Console: `noise <0-1> [white|pink|brown]`.
+
+The noise comes from three precomputed loops (2^18 samples each, built once at the first
+use with a fixed seed, so a given sequence of actions always sounds the same). Each note
+starts at its own random position in the loop.
 
 ## Unison
 
@@ -485,6 +507,7 @@ An interactive console starts alongside the audio. Type `help`. Commands:
 | `lfo <rate> <depth> [wave] [dest]` | LFO 1: 0.05-20 Hz, depth 0-1 (0 = off); wave sine\|triangle\|saw\|square\|random\|random-glide; dest pitch\|filter\|pwm\|amp\|lfo2-rate |
 | `lfo2 <rate> <depth> [wave] [dest]` | LFO 2, same arguments (default dest filter; dest also lfo1-rate) |
 | `glide <seconds>` | slide between notes, 0-2 s (0 = off) |
+| `noise <0-1> [white\|pink\|brown]` | noise level mixed in per voice (0 = off, the default) and its color |
 | `unison <1-12> [detune_cents] [spread]` | stack voices per note (polyphony = 12 // width); detune 0-50 cents, spread 0-1 |
 | `tempo <40-240>` | manual tempo in BPM (used when no MIDI clock arrives) |
 | `delaysync <on\|off> [division]` | lock the delay time to the tempo; divisions 1/1 1/2 1/2. 1/4 1/4. 1/4T 1/8 1/8. 1/8T 1/16 1/16. |
@@ -561,6 +584,7 @@ Polyphonic (per-note) aftertouch is ignored. Console: `sustain on|off` and `pani
 ```
 per voice (up to 12, shared with unison):
   osc1 (saw + square layer) ─────────────────────────────┐
+  noise (white/pink/brown, optional) ────────────────────┤
   osc2 (square) ◀── mode: fm/am/ring/sync ── osc1        ├─▶ mix ─▶ low-pass* ─▶ amp envelope ─▶ pan
                                                          ┘            ▲
                                          filter envelope, key tracking, velocity, LFO

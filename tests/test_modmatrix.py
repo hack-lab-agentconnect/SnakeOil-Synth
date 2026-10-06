@@ -16,6 +16,7 @@ from midi_synth.modmatrix import (
 M1_NAMES = (
     "Osc 1: Level", "Osc 1: PWM", "Osc 1: Sq Level",
     "Osc 2: Level", "Osc 2: Tune", "Osc 2: Fine", "Osc 2: PWM",
+    "Noise: Level",
     "Modulation Amount",
     "Filter: Cutoff", "Filter: Resonance", "Filter: Env Amount",
     "Filter: Key Trk", "Filter: Vel>Cut",

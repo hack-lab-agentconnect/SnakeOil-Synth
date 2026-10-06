@@ -49,6 +49,7 @@ DESTINATIONS = (
     Destination("Osc 2: Tune", "detune2_semitones", VOICE, SEMITONE_MIN, SEMITONE_MAX),
     Destination("Osc 2: Fine", "detune2_cents", VOICE, CENTS_MIN, CENTS_MAX),
     Destination("Osc 2: PWM", "osc2_pwm", VOICE, 0.0, 0.5),
+    Destination("Noise: Level", "noise_level", VOICE, 0.0, 1.0),
     Destination("Modulation Amount", "fm_depth", VOICE, 0.0, 1.0),
     Destination("Tempo", "tempo_bpm", GLOBAL, TEMPO_MIN, TEMPO_MAX),
     Destination("Filter: Cutoff", "lpf_cutoff", VOICE, LPF_MIN_HZ, LPF_MAX_HZ),

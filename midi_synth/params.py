@@ -24,6 +24,7 @@ from .config import (
     TEMPO_MAX,
     DELAY_DIVISION_NAMES,
 )
+from .noise import NOISE_COLORS
 from .filters import LPF_MIN_HZ, LPF_MAX_HZ
 from .modmatrix import DEST_NAMES, NUM_SLOTS, SOURCES
 
@@ -350,6 +351,17 @@ def build_registry(engine):
         Param(id="unison_spread", label="Spread", group="Unison", kind=CONTINUOUS,
               get=lambda: p["unison_spread"], set=engine.set_unison_spread,
               tooltip="Stereo width of the unison voices."),
+    ]
+    params += [
+        Param(id="noise_level", label="Level", group="Noise", kind=CONTINUOUS,
+              get=lambda: p["noise_level"], set=engine.set_noise_level,
+              tooltip="Noise mixed in with the oscillators, per voice, through "
+                      "the filter and amp envelope. 0 = off."),
+        Param(id="noise_color", label="Color", group="Noise", kind=CHOICE,
+              choices=NOISE_COLORS, get=lambda: p["noise_color"],
+              set=engine.set_noise_color,
+              tooltip="White = bright hiss, pink = softer (-3 dB/octave), "
+                      "brown = dark rumble (-6 dB/octave)."),
     ]
     params += [
         Param(id="tempo_bpm", label="BPM", group="Tempo", kind=CONTINUOUS,

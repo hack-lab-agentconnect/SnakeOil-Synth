@@ -56,6 +56,7 @@ from .config import (
     MOD_SMOOTH,
 )
 from .filters import LowPass, LPF_MIN_HZ, LPF_MAX_HZ, lpf_coefficients
+from . import noise
 from .lfo import LFO
 from .voice import IDLE, Voice, midi_note_to_freq
 from .effects import EffectChain
@@ -100,6 +101,8 @@ class SynthEngine:
         self.params = {
             "osc1_level": 1.0,
             "osc2_level": 0.0,
+            "noise_level": 0.0,
+            "noise_color": "white",
             "osc1_square": True,
             "osc1_square_level": DEFAULT_SQUARE_LEVEL,
             "osc1_pwm": DEFAULT_PWM,
@@ -201,6 +204,7 @@ class SynthEngine:
         self._order = 0
         self._group_counter = 0
         self._rng = np.random.default_rng(1234)
+        self._noise_rng = np.random.default_rng(777)
         self.sustain = False
         self._sustained = set()
         self._update_lpf()
@@ -243,6 +247,25 @@ class SynthEngine:
                 raise KeyError(key)
             self.params[key] = min(max(level, 0.0), 1.0)
             return self.params[key]
+
+    def set_noise_level(self, level):
+        with self.lock:
+            self.params["noise_level"] = min(max(float(level), 0.0), 1.0)
+            if self.params["noise_level"] > 0.0:
+                noise.table(self.params["noise_color"])
+
+    def set_noise_color(self, color):
+        if color not in noise.NOISE_COLORS:
+            raise ValueError("unknown noise color: %r (choose from %s)"
+                             % (color, ", ".join(noise.NOISE_COLORS)))
+        with self.lock:
+            self.params["noise_color"] = color
+            if self.params["noise_level"] > 0.0:
+                noise.table(color)
+            return color
+
+    def _noise_start(self):
+        return int(self._noise_rng.integers(noise.NOISE_TABLE_LEN))
 
     def set_fm_depth(self, depth):
         with self.lock:
@@ -810,7 +833,8 @@ class SynthEngine:
                       unison_pos=float(pos),
                       detune_cents=float(pos * p["unison_detune"]),
                       pan=float(pos * p["unison_spread"]), gain=float(gain),
-                      group=self._group_counter, random_phase=True, rng=self._rng)
+                      group=self._group_counter, random_phase=True, rng=self._rng,
+                      noise_pos=self._noise_start())
 
     def note_on(self, note, velocity=100):
         with self.lock:
@@ -833,7 +857,8 @@ class SynthEngine:
             self._last_freq = midi_note_to_freq(note)
             self._last_note = note
             if count == 1:
-                voice.note_on(note, vel, self._order, glide_from, glide_time)
+                voice.note_on(note, vel, self._order, glide_from, glide_time,
+                              noise_pos=self._noise_start())
             else:
                 self._note_on_unison(note, vel, count, glide_from, glide_time)
 
@@ -1210,6 +1235,8 @@ class SynthEngine:
                 "osc1_square_level": self.params["osc1_square_level"],
                 "osc1_pwm": self.params["osc1_pwm"],
                 "osc2_level": self.params["osc2_level"],
+                "noise_level": self.params["noise_level"],
+                "noise_color": self.params["noise_color"],
                 "osc2_pwm": self.params["osc2_pwm"],
                 "mod_mode": self.params["mod_mode"],
                 "fm_depth": self.params["fm_depth"],

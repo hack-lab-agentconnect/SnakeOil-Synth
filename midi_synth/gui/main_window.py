@@ -3,7 +3,7 @@
 from PySide6.QtCore import QEvent, QSize, Qt, QTimer
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QFrame, QGridLayout, QGroupBox, QInputDialog, QLabel,
-    QMainWindow, QMessageBox, QPushButton, QScrollArea, QToolBar, QWidget,
+    QMainWindow, QMessageBox, QPushButton, QScrollArea, QToolBar, QHBoxLayout, QWidget,
 )
 
 from ..bindings import DEFAULT_NAME
@@ -31,7 +31,11 @@ GROUP_POSITIONS = {
     "Effects": (2, 0, 1, 3),
     "Unison": (2, 3, 1, 1),
     "Glide": (2, 4, 1, 1),
+    "Noise": (0, 4, 1, 1),
 }
+# Groups listed with the same cell share it side by side (here Tempo and
+# Noise, which are both small); this gives their relative widths.
+SHARED_CELL_STRETCH = {"Tempo": 2, "Noise": 3}
 GROUP_POSITIONS["Mod Matrix"] = MOD_MATRIX_CELL
 
 # Registry groups kept out of the generic body (none at present).
@@ -290,8 +294,24 @@ class MainWindow(QMainWindow):
         grid = QGridLayout()
         grid.setContentsMargins(6, 2, 6, 4)
         grid.setSpacing(4)
+        positions = list(GROUP_POSITIONS)
+        cells = {}
         for index, (name, box) in enumerate(groups.items()):
-            grid.addWidget(box, *GROUP_POSITIONS.get(name, (3, index, 1, 1)))
+            cells.setdefault(GROUP_POSITIONS.get(name, (3, index, 1, 1)), []).append(box)
+        for cell, boxes in cells.items():
+            if len(boxes) == 1:
+                grid.addWidget(boxes[0], *cell)
+                continue
+            # several small groups share one grid cell, side by side in the
+            # order they are listed in GROUP_POSITIONS
+            boxes.sort(key=lambda b: positions.index(b.title()))
+            holder = QWidget()
+            stack = QHBoxLayout(holder)
+            stack.setContentsMargins(0, 0, 0, 0)
+            stack.setSpacing(4)
+            for box in boxes:
+                stack.addWidget(box, SHARED_CELL_STRETCH.get(box.title(), 1))
+            grid.addWidget(holder, *cell)
         body = QWidget()
         body.setLayout(grid)
         self.scroll = _BodyScroll()
