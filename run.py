@@ -148,6 +148,8 @@ HELP_TEXT = """commands:
                              filter:resonance filter:envamount filter:keytrk
                              filter:vel>cut tempo filterenv:attack|decay|sustain|release
                              ampenv:attack|decay|sustain|release (also amp:attack ...)
+                             chorus:depth delay:time|feedback|tone
+                             reverb:amount|size|damping bitcrush:crush
                              unison:detune unison:spread ...) or none
   mod clear [slot]           empty one matrix row, or all of them
   tune2 <-12..12>            osc2 coarse semitones

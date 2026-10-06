@@ -206,7 +206,8 @@ def test_destination_combo_has_disabled_headers(engine_registry):
     items = _items(combo)
     assert items[0] == ("none", True)
     headers = [t for t, enabled in items if not enabled]
-    assert headers == ["Osc 1", "Osc 2", "Filter", "Filter Env", "Amp Env", "Unison"]
+    assert headers == ["Osc 1", "Osc 2", "Filter", "Filter Env", "Amp Env", "Chorus",
+                       "Delay", "Reverb", "Bitcrush", "Unison"]
     selectable = [t for t, enabled in items if enabled]
     assert sorted(selectable) == sorted(DEST_NAMES)
     assert len(selectable) == len(set(selectable))

@@ -497,7 +497,8 @@ def test_gui_destination_combo_new_entries_once_and_headers():
     for name in ("Tempo", "Unison: Detune", "Unison: Spread",
                  *[c[0] for c in ENV_CASES]):
         assert selectable.count(name) == 1
-    assert headers == ["Osc 1", "Osc 2", "Filter", "Filter Env", "Amp Env", "Unison"]
+    assert headers == ["Osc 1", "Osc 2", "Filter", "Filter Env", "Amp Env", "Chorus",
+                       "Delay", "Reverb", "Bitcrush", "Unison"]
 
 
 def test_threaded_new_rows_while_rendering():

@@ -163,22 +163,22 @@ def build_registry(engine):
         "chorus": Param(
             id="fx_chorus_depth", label="Depth", group="Effects", kind=CONTINUOUS,
             minimum=0.0, maximum=1.0, fmt="{:.2f}", under="fx_chorus",
-            get=lambda: fx.chorus.amount, set=engine.set_chorus_depth,
+            get=lambda: engine.fx_base["fx_chorus_depth"], set=engine.set_chorus_depth,
             tooltip="How far the chorus delay swings. Low = subtle "
                     "thickening, high = obvious wobble."),
         "delay": Param(
             id="fx_delay_time", label="Time", group="Effects", kind=CONTINUOUS,
             minimum=200.0, maximum=4000.0, scale="log", fmt="{:.0f} ms",
-            under="fx_delay", get=lambda: engine.delay_manual_ms,
+            under="fx_delay", get=lambda: engine.fx_base["fx_delay_time"],
             set=engine.set_delay_time, tooltip="Delay time between echoes."),
         "reverb": Param(
             id="fx_reverb_amount", label="Amount", group="Effects",
-            kind=CONTINUOUS, under="fx_reverb", get=lambda: fx.reverb.mix,
+            kind=CONTINUOUS, under="fx_reverb", get=lambda: engine.fx_base["fx_reverb_amount"],
             set=engine.set_reverb_amount, tooltip="Reverb wet level."),
         "bitcrush": Param(
             id="fx_bitcrush_amount", label="Crush", group="Effects",
             kind=CONTINUOUS, under="fx_bitcrush",
-            get=lambda: fx.bitcrush.amount, set=engine.set_crush_amount,
+            get=lambda: engine.fx_base["fx_bitcrush_amount"], set=engine.set_crush_amount,
             tooltip="Bit depth and sample-rate reduction."),
     }
 
@@ -374,12 +374,12 @@ def build_registry(engine):
             pingpong,
             Param(id="fx_delay_feedback", label="Feedback", group="Effects",
                   kind=CONTINUOUS, minimum=0.0, maximum=0.95, under="fx_delay",
-                  get=lambda: fx.delay.feedback, set=engine.set_delay_feedback,
+                  get=lambda: engine.fx_base["fx_delay_feedback"], set=engine.set_delay_feedback,
                   tooltip="How much of each echo is fed back. High = "
                           "long trailing repeats."),
             Param(id="fx_delay_damp", label="Tone", group="Effects",
                   kind=CONTINUOUS, minimum=0.0, maximum=0.9, under="fx_delay",
-                  get=lambda: fx.delay.damp, set=engine.set_delay_damp,
+                  get=lambda: engine.fx_base["fx_delay_damp"], set=engine.set_delay_damp,
                   tooltip="Echo brightness: higher = darker echoes."),
             Param(id="fx_delay_sync", label="Sync", group="Effects",
                   kind=TOGGLE, under="fx_delay_time",
@@ -396,12 +396,12 @@ def build_registry(engine):
         "reverb": [
             Param(id="fx_reverb_size", label="Size", group="Effects",
                   kind=CONTINUOUS, minimum=0.5, maximum=0.98,
-                  under="fx_reverb", get=lambda: fx.reverb.room,
+                  under="fx_reverb", get=lambda: engine.fx_base["fx_reverb_size"],
                   set=engine.set_reverb_size,
                   tooltip="Room size: how long the reverb tail rings."),
             Param(id="fx_reverb_damp", label="Damping", group="Effects",
                   kind=CONTINUOUS, minimum=0.0, maximum=0.9,
-                  under="fx_reverb", get=lambda: fx.reverb.damp,
+                  under="fx_reverb", get=lambda: engine.fx_base["fx_reverb_damp"],
                   set=engine.set_reverb_damp,
                   tooltip="High-frequency absorption in the reverb tail. "
                           "Higher = darker, softer tail."),

@@ -64,6 +64,15 @@ DESTINATIONS = (
     Destination("Amp Env: Decay", "amp_decay", VOICE, AMP_TIME_MIN, AMP_DECAY_MAX),
     Destination("Amp Env: Sustain", "amp_sustain", VOICE, 0.0, 1.0),
     Destination("Amp Env: Release", "amp_release", VOICE, AMP_TIME_MIN, AMP_RELEASE_MAX),
+    Destination("Chorus: Depth", "fx_chorus_depth", GLOBAL, 0.0, 1.0),
+    # delay time: engine limits, not the 200 ms knob minimum (synced times are shorter)
+    Destination("Delay: Time", "fx_delay_time", GLOBAL, 1.0, 4000.0),
+    Destination("Delay: Feedback", "fx_delay_feedback", GLOBAL, 0.0, 0.95),
+    Destination("Delay: Tone", "fx_delay_damp", GLOBAL, 0.0, 0.9),
+    Destination("Reverb: Amount", "fx_reverb_amount", GLOBAL, 0.0, 1.0),
+    Destination("Reverb: Size", "fx_reverb_size", GLOBAL, 0.5, 0.98),
+    Destination("Reverb: Damping", "fx_reverb_damp", GLOBAL, 0.0, 0.9),
+    Destination("Bitcrush: Crush", "fx_bitcrush_amount", GLOBAL, 0.0, 1.0),
     Destination("Unison: Detune", "unison_detune", VOICE, 0.0, UNISON_DETUNE_MAX),
     Destination("Unison: Spread", "unison_spread", VOICE, 0.0, 1.0),
 )
@@ -72,6 +81,9 @@ ENVELOPE_PARAMS = ("amp_attack", "amp_decay", "amp_sustain", "amp_release",
                    "flt_attack", "flt_decay", "flt_sustain", "flt_release")
 UNISON_PARAMS = ("unison_detune", "unison_spread")
 TEMPO_PARAM = "tempo_bpm"
+DELAY_TIME_PARAM = "fx_delay_time"
+FX_PARAMS = ("fx_chorus_depth", "fx_delay_time", "fx_delay_feedback", "fx_delay_damp",
+             "fx_reverb_amount", "fx_reverb_size", "fx_reverb_damp", "fx_bitcrush_amount")
 
 DEST_NAMES = ("none",) + tuple(d.name for d in DESTINATIONS)
 _BY_NAME = {d.name: d for d in DESTINATIONS}

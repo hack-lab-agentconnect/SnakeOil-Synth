@@ -66,7 +66,9 @@ from .modmatrix import (
     SRC_LFO2,
     SRC_NOTE,
     SRC_WHEEL,
+    DELAY_TIME_PARAM,
     ENVELOPE_PARAMS,
+    FX_PARAMS,
     TEMPO_PARAM,
     UNISON_PARAMS,
     destination,
@@ -148,7 +150,31 @@ class SynthEngine:
         self._lfo_last = [0.0, 0.0]
         self.lfo_rate_eff = [DEFAULT_LFO_RATE, DEFAULT_LFO_RATE]
         self.tempo = TempoTracker()
-        self.delay_manual_ms = self.effects.delay.time_ms
+        fx = self.effects
+        # base values of the effect dials: what the knobs, patches and status
+        # show; modulation only ever changes the live effect attributes
+        self.fx_base = {
+            "fx_chorus_depth": fx.chorus.amount,
+            "fx_delay_time": fx.delay.time_ms,
+            "fx_delay_feedback": fx.delay.feedback,
+            "fx_delay_damp": fx.delay.damp,
+            "fx_reverb_amount": fx.reverb.mix,
+            "fx_reverb_size": fx.reverb.room,
+            "fx_reverb_damp": fx.reverb.damp,
+            "fx_bitcrush_amount": fx.bitcrush.amount,
+        }
+        self._fx_setters = {
+            "fx_chorus_depth": fx.chorus.set_depth,
+            "fx_delay_feedback": fx.delay.set_feedback,
+            "fx_delay_damp": fx.delay.set_damp,
+            "fx_reverb_amount": fx.reverb.set_amount,
+            "fx_reverb_size": fx.reverb.set_room,
+            "fx_reverb_damp": fx.reverb.set_damp,
+            "fx_bitcrush_amount": fx.bitcrush.set_amount,
+        }
+        self._mod_fx = ()
+        self._fx_modulated = set()
+        self._fx_live = {}
         self._last_freq = None
         self._last_note = None
         self.mod_rows = [["none", 0.0, "none"] for _ in range(NUM_SLOTS)]
@@ -171,6 +197,11 @@ class SynthEngine:
         self._sustained = set()
         self._update_lpf()
         self._apply_envelope()
+
+    @property
+    def delay_manual_ms(self):
+        """The manual delay time (the base value of the Time knob)."""
+        return self.fx_base["fx_delay_time"]
 
     def _refresh_derived(self):
         self.params["mod_index"] = self.params["fm_depth"] * FM_INDEX_MAX
@@ -439,7 +470,7 @@ class SynthEngine:
         self._mod_wheel_used = wheel
         self._mod_at_used = at
         self._mod_lfo = lfo
-        view, env, uni, tempo = [], [], [], None
+        view, env, uni, tempo, fxs = [], [], [], None, []
         for pid, (d, terms) in by_dst.items():
             item = (d, tuple(terms), any(s == SRC_NOTE for _, s in terms))
             if pid in ENVELOPE_PARAMS:
@@ -448,12 +479,15 @@ class SynthEngine:
                 uni.append((pid,) + item)
             elif pid == TEMPO_PARAM:
                 tempo = item
+            elif pid in FX_PARAMS:
+                fxs.append((pid,) + item)
             else:
                 view.append(item)
         self._mod_dsts = tuple(view)
         self._mod_env = tuple(env)
         self._mod_uni = tuple(uni)
         self._mod_tempo = tempo
+        self._mod_fx = tuple(fxs)
         if self._env_modulated and not env:
             self._apply_envelope()
         self._env_modulated = bool(env)
@@ -462,6 +496,38 @@ class SynthEngine:
             if was and pid not in active:
                 self._restore_unison(pid)
             self._uni_modulated[pid] = pid in active
+        now = {pid for pid, *_ in fxs}
+        for pid in self._fx_modulated - now:
+            self._restore_fx(pid)
+        self._fx_modulated = now
+
+    def _restore_fx(self, pid):
+        """Put an effect destination back to its base value (once)."""
+        self._fx_live.pop(pid, None)
+        if pid == DELAY_TIME_PARAM:
+            self.effects.delay.set_time_target_ms(self._delay_base_ms())
+        else:
+            self._fx_setters[pid](self.fx_base[pid])
+
+    def _delay_base_ms(self):
+        """Delay time in force: the synced time when sync is on, else the knob."""
+        if self.params["delay_sync"]:
+            return self._synced_ms()
+        return self.fx_base[DELAY_TIME_PARAM]
+
+    def _apply_fx(self, vals):
+        """Set the live effect values for this block from the matrix."""
+        note_val = note_source(self._last_note)
+        for pid, d, terms, note_dep in self._mod_fx:
+            nv = note_val if note_dep else 0.0
+            if pid == DELAY_TIME_PARAM:
+                eff = self._mod_eff(d, terms, vals, nv, self._delay_base_ms())
+                self.effects.delay.set_time_target_ms(eff)
+            else:
+                eff = self._mod_eff(d, terms, vals, nv, self.fx_base[pid])
+                if self._fx_live.get(pid) != eff:
+                    self._fx_live[pid] = eff
+                    self._fx_setters[pid](eff)
 
     def _restore_unison(self, pid):
         base = self.params[pid]
@@ -552,6 +618,13 @@ class SynthEngine:
             for pid, d, terms, _ in self._mod_env + self._mod_uni:
                 if pid == param_id:
                     return self._mod_eff(d, terms, self._mod_values(), nv)
+            for pid, d, terms, _ in self._mod_fx:
+                if pid == param_id:
+                    base = (self._delay_base_ms() if pid == DELAY_TIME_PARAM
+                            else self.fx_base[pid])
+                    return self._mod_eff(d, terms, self._mod_values(), nv, base)
+            if param_id in self.fx_base:
+                return self.fx_base[param_id]
             return self.params[param_id]
 
     def _mod_eff(self, d, terms, vals, note_val, base=None):
@@ -757,16 +830,25 @@ class SynthEngine:
         with self.lock:
             self.effects.get(name).enabled = bool(enabled)
 
-    def set_chorus_depth(self, a):
+    def _set_fx_base(self, pid, value, lo, hi):
+        """Record a base value (clamped) and apply it unless it is modulated."""
+        value = min(max(float(value), lo), hi)
         with self.lock:
-            self.effects.chorus.set_depth(a)
+            self.fx_base[pid] = value
+            if pid not in self._fx_modulated:
+                self._fx_setters[pid](value)
+                self._fx_live.pop(pid, None)
+
+    def set_chorus_depth(self, a):
+        self._set_fx_base("fx_chorus_depth", a, 0.0, 1.0)
 
     def set_delay_time(self, ms):
         with self.lock:
-            self.effects.delay.set_time_ms(ms)
-            self.delay_manual_ms = self.effects.delay.time_ms
-            if self.params["delay_sync"]:
-                self._sync_delay()
+            self.fx_base[DELAY_TIME_PARAM] = min(max(float(ms), 1.0), 4000.0)
+            if DELAY_TIME_PARAM not in self._fx_modulated:
+                self.effects.delay.set_time_ms(self.fx_base[DELAY_TIME_PARAM])
+                if self.params["delay_sync"]:
+                    self._sync_delay()
 
     def set_tempo_bpm(self, bpm):
         self._set_unit("tempo_bpm", bpm, TEMPO_MIN, TEMPO_MAX)
@@ -776,6 +858,8 @@ class SynthEngine:
             on = bool(on)
             was = self.params["delay_sync"]
             self.params["delay_sync"] = on
+            if DELAY_TIME_PARAM in self._fx_modulated:
+                return   # the per-block evaluation follows the time in force
             if on:
                 self._sync_delay()
             elif was:
@@ -789,14 +873,20 @@ class SynthEngine:
             self.params["delay_division"] = name
             return name
 
+    def _synced_ms(self):
+        """Delay time locked to the tempo (external clock wins over manual)."""
+        ms = (60000.0 / self.effective_bpm()
+              * DELAY_DIVISION_BEATS[self.params["delay_division"]])
+        return min(max(ms, 1.0), 4000.0)
+
     def _sync_delay(self):
-        """Lock the delay time to the tempo (external clock wins over manual)."""
-        p = self.params
-        bpm = self.effective_bpm()
-        ms = 60000.0 / bpm * DELAY_DIVISION_BEATS[p["delay_division"]]
-        ms = min(max(ms, 1.0), 4000.0)
+        """Jump the delay to the synced time (not while Delay: Time is modulated)."""
+        if DELAY_TIME_PARAM in self._fx_modulated:
+            return
+        ms = self._synced_ms()
         delay = self.effects.delay
-        if abs(ms - delay.time_ms) > 0.5:
+        current = delay.time_ms if delay.target_ms is None else delay.target_ms
+        if abs(ms - current) > 0.5:
             delay.set_time_ms(ms)
 
     def _tempo_bpm(self, vals):
@@ -817,28 +907,22 @@ class SynthEngine:
             self.effects.delay.set_pingpong(on)
 
     def set_reverb_amount(self, v):
-        with self.lock:
-            self.effects.reverb.set_amount(v)
+        self._set_fx_base("fx_reverb_amount", v, 0.0, 1.0)
 
     def set_reverb_size(self, v):
-        with self.lock:
-            self.effects.reverb.set_room(v)
+        self._set_fx_base("fx_reverb_size", v, 0.5, 0.98)
 
     def set_reverb_damp(self, v):
-        with self.lock:
-            self.effects.reverb.set_damp(v)
+        self._set_fx_base("fx_reverb_damp", v, 0.0, 0.9)
 
     def set_delay_feedback(self, v):
-        with self.lock:
-            self.effects.delay.set_feedback(v)
+        self._set_fx_base("fx_delay_feedback", v, 0.0, 0.95)
 
     def set_delay_damp(self, v):
-        with self.lock:
-            self.effects.delay.set_damp(v)
+        self._set_fx_base("fx_delay_damp", v, 0.0, 0.9)
 
     def set_crush_amount(self, a):
-        with self.lock:
-            self.effects.bitcrush.set_amount(a)
+        self._set_fx_base("fx_bitcrush_amount", a, 0.0, 1.0)
 
     def toggle_effect(self, name):
         with self.lock:
@@ -922,7 +1006,8 @@ class SynthEngine:
                 lfo_filter = self._run_lfo(n)
             view, note_dsts, master_over, vals = params, (), None, None
             env_plan = uni_plan = None
-            if mod or self._mod_env or self._mod_uni or self._mod_tempo is not None:
+            if (mod or self._mod_env or self._mod_uni or self._mod_fx
+                    or self._mod_tempo is not None):
                 if self._mod_wheel_used:
                     self._wheel_s = smooth(self._wheel_s, self._mod_wheel, MOD_SMOOTH)
                 if self._mod_at_used:
@@ -936,6 +1021,8 @@ class SynthEngine:
                     uni_plan = self._mod_plan(self._mod_uni, vals)
             if params["delay_sync"]:
                 self._sync_delay()
+            if self._mod_fx:
+                self._apply_fx(vals)
             panned = []
             stereo = False
             for v in self.voices:
@@ -1000,6 +1087,27 @@ class SynthEngine:
             self._meter_clip = False
             return result
 
+    def _fx_status(self, pid):
+        """Effect dial value for ``status``: the live value when unmodulated
+        (the synced delay time while sync is on), the BASE value while a
+        matrix row modulates it (for delay time: the time in force)."""
+        fx = self.effects
+        if pid == DELAY_TIME_PARAM:
+            if pid in self._fx_modulated:
+                return self._delay_base_ms()
+            return fx.delay.time_ms
+        if pid in self._fx_modulated:
+            return self.fx_base[pid]
+        return {
+            "fx_chorus_depth": lambda: fx.chorus.amount,
+            "fx_delay_feedback": lambda: fx.delay.feedback,
+            "fx_delay_damp": lambda: fx.delay.damp,
+            "fx_reverb_amount": lambda: fx.reverb.mix,
+            "fx_reverb_size": lambda: fx.reverb.room,
+            "fx_reverb_damp": lambda: fx.reverb.damp,
+            "fx_bitcrush_amount": lambda: fx.bitcrush.amount,
+        }[pid]()
+
     def status(self):
         with self.lock:
             fx = {
@@ -1055,15 +1163,15 @@ class SynthEngine:
                 **{"mod%d_%s" % (i + 1, key): value
                    for i, r in enumerate(self.mod_rows)
                    for key, value in zip(("src", "amt", "dst"), r)},
-                "chorus_depth": self.effects.chorus.amount,
-                "delay_time": self.effects.delay.time_ms,
+                "chorus_depth": self._fx_status("fx_chorus_depth"),
+                "delay_time": self._fx_status("fx_delay_time"),
                 "delay_pingpong": self.effects.delay.pingpong,
-                "delay_feedback": self.effects.delay.feedback,
-                "delay_damp": self.effects.delay.damp,
-                "reverb_amount": self.effects.reverb.mix,
-                "reverb_size": self.effects.reverb.room,
-                "reverb_damp": self.effects.reverb.damp,
-                "crush_amount": self.effects.bitcrush.amount,
+                "delay_feedback": self._fx_status("fx_delay_feedback"),
+                "delay_damp": self._fx_status("fx_delay_damp"),
+                "reverb_amount": self._fx_status("fx_reverb_amount"),
+                "reverb_size": self._fx_status("fx_reverb_size"),
+                "reverb_damp": self._fx_status("fx_reverb_damp"),
+                "crush_amount": self._fx_status("fx_bitcrush_amount"),
                 "effects": fx,
                 "sustain": self.sustain,
                 "active_voices": sum(1 for v in self.voices if v.active),

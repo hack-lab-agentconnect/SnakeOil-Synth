@@ -296,8 +296,25 @@ Destinations so far: `Osc 1: Level`, `Osc 1: PWM`, `Osc 1: Sq Level`,
 `Tempo`, `Filter: Cutoff`, `Filter: Resonance` (per voice or on the master bus, where
 Note Number means the last played note), `Filter: Env Amount`,
 `Filter: Key Trk`, `Filter: Vel>Cut`, `Filter Env: Attack/Decay/Sustain/Release`,
-`Amp Env: Attack/Decay/Sustain/Release`, `Unison: Detune` and `Unison: Spread`.
-Effects follow.
+`Amp Env: Attack/Decay/Sustain/Release`, `Chorus: Depth`, `Delay: Time`,
+`Delay: Feedback`, `Delay: Tone`, `Reverb: Amount`, `Reverb: Size`, `Reverb: Damping`,
+`Bitcrush: Crush`, `Unison: Detune` and `Unison: Spread`.
+
+- **Effect destinations** are global: the sources are evaluated once per block (Note
+  Number means the last played note) and the result is set on the live effect. The
+  engine keeps a **base-value store** for these eight dials; the knobs, `status`,
+  patches and `capture` always show/store the BASE value while a row modulates it, and
+  setting a knob while modulated changes the base without disturbing the modulation
+  (the live value is `new base x (1 + ...)` from the next block). When a row is
+  cleared, zeroed or re-pointed the live value is restored to the base once. A base of 0
+  stays 0 (e.g. Reverb Amount). Ranges: chorus depth 0..1, delay feedback 0..0.95, delay
+  tone 0..0.9, reverb amount 0..1, size 0.5..0.98, damping 0..0.9, crush 0..1.
+- **Delay: Time** is relative to the time in force: the tempo-synced time when delay
+  sync is on, otherwise the manual Time knob. It is clamped to 1..4000 ms (not the 200 ms
+  knob minimum, so short synced times are not clamped). The time moves smoothly: within
+  each block the read delay is ramped linearly per sample from the previous to the new
+  time (no zipper noise, the pitch of the echoes glides). Turning the manual knob or
+  changing the tempo sync with no Delay: Time row still jumps immediately as before.
 
 - **Envelopes** are modulated per voice (so Note Number can give two held notes
   different decay times). The effective stage times are clamped to the knob ranges
@@ -313,7 +330,9 @@ Effects follow.
   tempo label in the window keeps showing the BASE tempo (manual or MIDI clock).
 - Console aliases: lowercase name without spaces, e.g. `mod 3 wheel -50 ampenv:attack`
   (also `amp:attack`), `mod 4 note 30 unison:detune`, `mod 5 lfo2 20 tempo`,
-  `filterenv:release`.
+  `filterenv:release`, `mod 6 lfo1 25 delay:time`, `mod 7 wheel 60 reverb:size`
+  (`chorus:depth`, `delay:feedback`, `delay:tone`, `reverb:amount`, `reverb:damping`,
+  `bitcrush:crush`).
 
 Matrix rows apply in addition to the LFOs' own destinations.
 

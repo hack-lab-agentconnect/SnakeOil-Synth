@@ -107,6 +107,7 @@ class Delay:
         self.damp = damp
         self.time_ms = time_ms
         self.time = time_ms * sr / 1000.0
+        self.target_ms = None
         maxlen = int(sr * 4.0) + 4
         self.buf = np.zeros((2, maxlen), dtype=np.float64)
         self.idx = 0
@@ -114,8 +115,14 @@ class Delay:
         self.pingpong = False
 
     def set_time_ms(self, time_ms):
+        """Jump to a new delay time immediately (drops any pending target)."""
         self.time_ms = min(max(float(time_ms), 1.0), 4000.0)
         self.time = self.time_ms * self.sr / 1000.0
+        self.target_ms = None
+
+    def set_time_target_ms(self, time_ms):
+        """Glide to a new delay time linearly across the next processed block."""
+        self.target_ms = min(max(float(time_ms), 1.0), 4000.0)
 
     def set_pingpong(self, on):
         self.pingpong = bool(on)
@@ -131,11 +138,25 @@ class Delay:
             return x
         n = x.shape[1]
         out = np.empty((2, n), dtype=np.float64)
+        target = self.target_ms
+        if target is not None:
+            self.target_ms = None
+            d0 = self.time
+            d1 = target * self.sr / 1000.0
+            if d1 != d0:
+                # reads must never reach samples written in the same chunk, so
+                # the chunk limit follows the smallest delay of the block
+                for a, b in _chunks(n, int(min(d0, d1))):
+                    delay = d0 + (d1 - d0) * (np.arange(a, b) + 1) / n
+                    out[:, a:b] = self._process_chunk(x[:, a:b], delay)
+                self.time_ms = target
+                self.time = d1
+                return out
         for a, b in _chunks(n, int(self.time)):
-            out[:, a:b] = self._process_chunk(x[:, a:b])
+            out[:, a:b] = self._process_chunk(x[:, a:b], self.time)
         return out
 
-    def _process_chunk(self, x):
+    def _process_chunk(self, x, delay):
         n = x.shape[1]
         buf = self.buf
         idx = self.idx
@@ -144,7 +165,7 @@ class Delay:
         wet = np.empty((2, n), dtype=np.float64)
         filt = np.empty((2, n), dtype=np.float64)
         for c in range(2):
-            wet[c] = _interp_read(buf[c], idx, n, self.time)
+            wet[c] = _interp_read(buf[c], idx, n, delay)
             filt[c], _ = lfilter([1.0 - damp], [1.0, -damp], wet[c],
                                  zi=[damp * self.filter[c]])
         if self.pingpong:
