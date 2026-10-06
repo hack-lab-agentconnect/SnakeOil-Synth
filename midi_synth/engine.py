@@ -20,6 +20,8 @@ from .config import (
     CENTS_MIN,
     CENTS_MAX,
     LPF_MODES,
+    LPF_SLOPES,
+    DEFAULT_LPF_SLOPE,
     DEFAULT_PWM,
     DEFAULT_SQUARE_LEVEL,
     DEFAULT_LPF_MODE,
@@ -55,7 +57,7 @@ from .config import (
     DEFAULT_DELAY_DIVISION,
     MOD_SMOOTH,
 )
-from .filters import LowPass, LPF_MIN_HZ, LPF_MAX_HZ, lpf_coefficients
+from .filters import LowPass, LPF_MIN_HZ, LPF_MAX_HZ, filter_coefficients
 from . import noise
 from .lfo import LFO
 from .voice import IDLE, Voice, midi_note_to_freq
@@ -120,6 +122,7 @@ class SynthEngine:
             "lpf_cutoff": DEFAULT_LPF_CUTOFF,
             "lpf_resonance": 0.0,
             "lpf_mode": DEFAULT_LPF_MODE,
+            "lpf_slope": DEFAULT_LPF_SLOPE,
             "lpf_coeffs": None,
             "amp_attack": DEFAULT_ADSR["attack"],
             "amp_decay": DEFAULT_ADSR["decay"],
@@ -306,7 +309,8 @@ class SynthEngine:
         if p["lpf_cutoff"] >= LPF_MAX_HZ / 1.01:
             p["lpf_coeffs"] = None
         else:
-            p["lpf_coeffs"] = lpf_coefficients(p["lpf_cutoff"], p["lpf_resonance"], self.sr)
+            p["lpf_coeffs"] = filter_coefficients(
+                p["lpf_cutoff"], p["lpf_resonance"], self.sr, p["lpf_slope"])
         if force_reset or was_bypassed != (p["lpf_coeffs"] is None):
             self.master_lpf.reset()
             self.master_lpf_r.reset()
@@ -330,6 +334,14 @@ class SynthEngine:
             self.params["lpf_mode"] = mode
             self._update_lpf(force_reset=True)
             return mode
+
+    def set_lpf_slope(self, slope):
+        if slope not in LPF_SLOPES:
+            raise ValueError("unknown filter slope: %r (choose from %s)" % (slope, ", ".join(LPF_SLOPES)))
+        with self.lock:
+            self.params["lpf_slope"] = slope
+            self._update_lpf(force_reset=True)
+            return slope
 
     def _apply_envelope(self):
         p = self.params
@@ -1086,7 +1098,8 @@ class SynthEngine:
         cutoff = min(max(cutoff, LPF_MIN_HZ), 0.45 * self.sr)
         if cutoff >= LPF_MAX_HZ / 1.01:
             return None
-        return lpf_coefficients(cutoff, over.get("lpf_resonance", p["lpf_resonance"]), self.sr)
+        return filter_coefficients(
+            cutoff, over.get("lpf_resonance", p["lpf_resonance"]), self.sr, p["lpf_slope"])
 
     def render(self, n=None, apply_effects=True):
         if n is None:
@@ -1248,6 +1261,7 @@ class SynthEngine:
                 "lpf_cutoff": self.params["lpf_cutoff"],
                 "lpf_resonance": self.params["lpf_resonance"],
                 "lpf_mode": self.params["lpf_mode"],
+                "lpf_slope": self.params["lpf_slope"],
                 "amp_attack": self.params["amp_attack"],
                 "amp_decay": self.params["amp_decay"],
                 "amp_sustain": self.params["amp_sustain"],

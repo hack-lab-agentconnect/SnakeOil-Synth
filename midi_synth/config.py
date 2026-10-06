@@ -18,6 +18,8 @@ CENTS_MAX = 0.5
 
 LPF_MODES = ("voice", "master")
 DEFAULT_LPF_MODE = "voice"
+LPF_SLOPES = ("12 dB", "24 dB")
+DEFAULT_LPF_SLOPE = "12 dB"
 DEFAULT_LPF_CUTOFF = 2000.0
 
 FM_INDEX_MAX = 8.0

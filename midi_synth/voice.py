@@ -4,7 +4,10 @@ import numpy as np
 
 from . import noise
 from .config import DEFAULT_SQUARE_LEVEL, FLT_ENV_OCTAVES, FLT_VEL_OCTAVES
-from .filters import LPF_MAX_HZ, LPF_MIN_HZ, LowPass, lpf_coefficients
+from .filters import (
+    LADDER_OSC_LEVEL, LADDER_OSC_START, LPF_MAX_HZ, LPF_MIN_HZ, LowPass,
+    filter_coefficients,
+)
 
 ATTACK, DECAY, SUSTAIN, RELEASE, IDLE = range(5)
 
@@ -110,6 +113,8 @@ class Voice:
         self.velocity = 0.0
         self.trigger_order = 0
         self._lpf_bypassed = False
+        self.osc_phase = 0.0
+        self._eff_cutoff = None
         self.glide_from = None
         self.glide_total = 0.0
         self.glide_pos = 0.0
@@ -155,6 +160,7 @@ class Voice:
         self.flt_env.level = 0.0
         self.flt_env.note_on()
         self.lpf.reset()
+        self.osc_phase = 0.0
 
     def note_off(self):
         self.gate = False
@@ -167,6 +173,7 @@ class Voice:
         Uses the shared coefficients unless a per-voice modulation is active.
         """
         shared = params["lpf_coeffs"]
+        self._eff_cutoff = None
         amount = params.get("flt_env_amount", 0.0)
         keytrack = params.get("flt_keytrack", 0.0)
         vel_amt = params.get("flt_vel", 0.0)
@@ -185,7 +192,25 @@ class Voice:
         cutoff = min(max(cutoff, LPF_MIN_HZ), 0.45 * self.sr)
         if cutoff >= LPF_MAX_HZ / 1.01:
             return None
-        return lpf_coefficients(cutoff, params["lpf_resonance"], self.sr)
+        self._eff_cutoff = cutoff
+        return filter_coefficients(cutoff, params["lpf_resonance"], self.sr,
+                                   params.get("lpf_slope", "12 dB"))
+
+    def _whistle(self, n, resonance, params):
+        """The 24 dB filter's self-oscillation: a sine at the effective cutoff.
+
+        Phase-continuous across blocks; fades in over the top of the
+        resonance range.
+        """
+        cutoff = self._eff_cutoff
+        if cutoff is None:
+            cutoff = min(max(params["lpf_cutoff"], LPF_MIN_HZ), 0.45 * self.sr)
+        t = min((resonance - LADDER_OSC_START) / (1.0 - LADDER_OSC_START), 1.0)
+        level = LADDER_OSC_LEVEL * t * t * (3.0 - 2.0 * t)
+        step = 2.0 * math.pi * cutoff / self.sr
+        wave = np.sin(self.osc_phase + step * np.arange(1, n + 1))
+        self.osc_phase = (self.osc_phase + step * n) % (2.0 * math.pi)
+        return level * wave
 
     def _noise_chunk(self, n, params):
         """The next ``n`` samples of this voice's noise stream (wrapping)."""
@@ -274,6 +299,9 @@ class Voice:
                 if self._lpf_bypassed:
                     self.lpf.reset()
                 mix = self.lpf.process(mix, coeffs)
+                if (params.get("lpf_slope") == "24 dB"
+                        and params["lpf_resonance"] > LADDER_OSC_START):
+                    mix = mix + self._whistle(n, params["lpf_resonance"], params)
             self._lpf_bypassed = coeffs is None
         env = self.env.process(n)
         amp = 0.22 * (0.3 + 0.7 * self.velocity)

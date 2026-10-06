@@ -21,8 +21,9 @@ toggleable effects chain.
   octave up (on by default).
 - **Modulation modes** (osc 1 -> osc 2): off, FM (phase modulation), AM, ring and hard sync,
   with one amount control. See [Modulation modes](#modulation-modes-osc1---osc2).
-- **Resonant 12 dB/oct low-pass filter** (cutoff + resonance, 2000 Hz by default, 20 kHz =
-  bypass), per voice or on the master bus, with a **filter envelope** (ADSR + amount),
+- **Resonant low-pass filter** with a **12/24 dB per octave slope switch** (cutoff +
+  resonance, 2000 Hz by default, 20 kHz = bypass; the 24 dB mode is Moog-style and
+  whistles at maximum resonance), per voice or on the master bus, with a **filter envelope** (ADSR + amount),
   **key tracking** and **velocity-to-cutoff**.
 - **Amp envelope** (ADSR) per voice.
 - **Noise generator** (white, pink or brown) mixed in per voice, through the filter and amp
@@ -240,6 +241,31 @@ when the signal would clip, and keeps it down. With it off, the sound is exactly
 - It belongs to the output stage, not to the sound: like master volume it is not stored
   in patches (a patch file that contains it is accepted and the value ignored). Console:
   `limiter on|off|reset`.
+
+## Low-pass filter slope (12 / 24 dB)
+
+The *Slope* switch in the *Filter* group chooses the low-pass type. It defaults to
+**12 dB**, the classic 2-pole resonant filter, and nothing about the default sound
+changes. **24 dB** is a Moog-style 4-pole ladder (24 dB per octave). Console:
+`lpfslope <12|24>` (also `12db` / `24db`). The slope is a normal parameter, so patches
+store it; a patch saved before it existed loads as 12 dB.
+
+- **Darker at the same cutoff.** Like the real ladder, the four poles coincide at zero
+  resonance, so the -3 dB corner sits below the nominal cutoff (the response is 12 dB down
+  at the cutoff itself). Raise the cutoff a little to match the 12 dB brightness.
+- **Resonance eats bass.** The feedback also lowers the low-frequency gain (by
+  1/(1+k), down to about -14 dB at full resonance), as on a real Moog. Resonance 0 to 1
+  maps to feedback 0 to 3.98 of the 4.0 self-oscillation point, so the filter always
+  stays stable and rings for a long time at the top of the range.
+- **Self-oscillation whistle.** A linear filter cannot oscillate on its own, so above 0.9
+  resonance the per-voice 24 dB filter adds a sine wave at the filter's *effective* cutoff
+  to the voice, fading in smoothly from 0.9 (silent) to 1.0 (full, 0.35). It follows the
+  cutoff after the filter envelope, key tracking, velocity, LFO and mod matrix, so with
+  *Key Trk* at 1.00 you can play the whistle as a pitched instrument. It is added before
+  the amp envelope, so it follows the note's envelope, velocity and release, and it needs
+  no input signal at all (oscillators and noise at 0 still whistle). It is absent in
+  12 dB mode, with the filter bypassed (cutoff at 20 kHz) and with *Master-bus filter*
+  on, where the 24 dB filter still steepens the slope but does not whistle.
 
 ## Velocity, filter envelope and key tracking
 
@@ -506,6 +532,7 @@ An interactive console starts alongside the audio. Type `help`. Commands:
 | `lpf <20-20000>` | low-pass cutoff in Hz (20000 = off, default 2000) |
 | `lres <0-1>` | low-pass resonance |
 | `lpfmode <voice\|master>` | filter placement |
+| `lpfslope <12\|24>` | low-pass slope in dB/octave (24 = Moog-style, whistles at maximum resonance in the per-voice filter) |
 | `adsr <a> <d> <s> <r>` | amp envelope: attack, decay in s (0.001-5), sustain 0-1, release in s (0.001-10) |
 | `velocity <on\|off>` | off = every note plays at one fixed velocity |
 | `limiter <on\|off>` | auto limiter: turns the volume down when the signal would clip and holds it there until silence or a patch change (default off) |
@@ -616,7 +643,7 @@ output is the mean of left and right; channels beyond 2 are silent.
 
 ## Performance
 
-The effects, filter and envelope process whole blocks with numpy / SciPy (`scipy.signal.lfilter`)
+The effects, filter and envelope process whole blocks with numpy / SciPy (`scipy.signal.lfilter`; the 24 dB filter is two cascaded biquads)
 rather than sample by sample. `python bench.py` prints the time per audio block against the
 block budget for 12 voices (defaults, filter placements, each effect, all effects). On the
 development machine (48 kHz, 256-sample blocks) all four effects plus 12 voices use about

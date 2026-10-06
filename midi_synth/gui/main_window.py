@@ -62,6 +62,9 @@ MATRIX_TOOLTIP = ("Scale is relative: the destination's current value x "
                   "stays 0.")
 
 STACK_COMBO_CHARS = 9
+
+# Short two-choice combos kept as narrow as a knob: param id -> width in pixels.
+NARROW_COMBOS = {"lpf_slope": 66}
 MIN_WINDOW_SIZE = (640, 420)
 METER_INTERVAL_MS = 33
 
@@ -245,6 +248,9 @@ class MainWindow(QMainWindow):
                 groups[title] = box
             matrix = param.group == "Mod Matrix"
             control = ParamControl(self.registry, param, compact=matrix)
+            if param.id in NARROW_COMBOS and isinstance(control.editor, QComboBox):
+                control.editor.setFixedWidth(NARROW_COMBOS[param.id])
+                control.editor.setStyleSheet("padding: 3px 4px;")
             control.learnRequested.connect(self._on_learn_requested)
             control.clearRequested.connect(self._on_clear_requested)
             cells = columns.setdefault(param.group, {})

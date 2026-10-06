@@ -169,6 +169,8 @@ HELP_TEXT = """commands:
   lpf <20-20000>             low-pass cutoff in Hz (20000 = off)
   lres <0-1>                 low-pass resonance
   lpfmode <voice|master>     filter placement
+  lpfslope <12|24>           low-pass slope in dB/octave (24 = Moog-style, whistles at
+                             maximum resonance in the per-voice filter)
   adsr <a> <d> <s> <r>       amp envelope: attack, decay (s), sustain (0-1), release (s)
   velocity <on|off>          off = every note plays at one fixed velocity
   limiter <on|off>           auto limiter: turns the volume down when the signal would clip
@@ -419,6 +421,13 @@ def console_loop(engine, registry=None, patch_store=None, patch_defaults=None,
                 engine.set_lpf_resonance(float(parts[1]))
             elif cmd == "lpfmode":
                 engine.set_lpf_mode(parts[1].lower())
+            elif cmd == "lpfslope":
+                slope = {"12": "12 dB", "12db": "12 dB", "24": "24 dB", "24db": "24 dB"}.get(
+                    parts[1].lower() if len(parts) > 1 else "")
+                if slope is None:
+                    print("usage: lpfslope <12|24>")
+                else:
+                    engine.set_lpf_slope(slope)
             elif cmd == "adsr":
                 attack, decay, sustain, release = (float(x) for x in parts[1:5])
                 if len(parts) != 5:

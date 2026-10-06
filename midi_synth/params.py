@@ -23,6 +23,7 @@ from .config import (
     TEMPO_MIN,
     TEMPO_MAX,
     DELAY_DIVISION_NAMES,
+    LPF_SLOPES,
 )
 from .noise import NOISE_COLORS
 from .filters import LPF_MIN_HZ, LPF_MAX_HZ
@@ -249,6 +250,12 @@ def build_registry(engine):
               tooltip="Low-pass cutoff. Fully right = filter off."),
         Param(id="lpf_resonance", label="Resonance", group="Filter", kind=CONTINUOUS,
               get=lambda: p["lpf_resonance"], set=engine.set_lpf_resonance),
+        Param(id="lpf_slope", label="Slope", group="Filter", kind=CHOICE,
+              choices=LPF_SLOPES, get=lambda: p["lpf_slope"], set=engine.set_lpf_slope,
+              tooltip="12 dB: the classic 2-pole low-pass. 24 dB: a Moog-style 4-pole "
+                      "ladder, steeper and darker at the same cutoff, and the bass thins "
+                      "as resonance rises. At near-maximum resonance the 24 dB filter "
+                      "whistles on its own (per-voice filter only), at the cutoff pitch."),
         Param(id="lpf_master", label="Master-bus filter", group="Filter", kind=TOGGLE,
               get=lambda: p["lpf_mode"] == "master",
               set=lambda v: engine.set_lpf_mode("master" if v else "voice"),
