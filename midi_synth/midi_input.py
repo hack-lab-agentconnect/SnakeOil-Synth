@@ -90,9 +90,12 @@ class MidiInput:
                 self.router.handle_note(msg.channel, msg.note, 0, False)
                 self.engine.note_off(msg.note)
             elif msg.type == "control_change":
+                if msg.control == 1:
+                    self.engine.set_mod_wheel(msg.value / 127.0)
                 if not self.router.handle_cc(msg.channel, msg.control, msg.value):
                     self._standard_cc(msg.control, msg.value)
             elif msg.type == "aftertouch":
+                self.engine.set_aftertouch(msg.value / 127.0)
                 self.router.handle_pressure(msg.channel, msg.value)
             elif msg.type == "pitchwheel":
                 self.engine.set_pitch_bend(msg.pitch / 8192.0)

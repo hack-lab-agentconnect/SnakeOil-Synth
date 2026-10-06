@@ -113,7 +113,6 @@ class Profile:
 
 
 _DEFAULT_CCS = (
-    (1, "fm_depth"),
     (7, "master_gain"),
     (20, "fx_chorus"),
     (21, "fx_delay"),

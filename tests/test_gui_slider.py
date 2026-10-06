@@ -156,7 +156,7 @@ def test_window_envelope_group(qapp, tmp_path):
     window = MainWindow(engine, reg, router, store, [], Bridge(reg, router))
     assert GROUP_POSITIONS["Filter Env"][:2] == (1, 1)
     assert GROUP_POSITIONS["Amp Envelope"][:2] == (1, 2)
-    assert set(window.controls) == set(reg.ids())
+    assert set(window.controls) == {p.id for p in reg if p.group != "Mod Matrix"}
     box = next(b for b in window.findChildren(QGroupBox) if b.title() == "Amp Envelope")
     layout = box.layout()
     widgets = [layout.itemAtPosition(0, c).widget() for c in range(4)]

@@ -166,7 +166,8 @@ class Voice:
         keytrack = params.get("flt_keytrack", 0.0)
         vel_amt = params.get("flt_vel", 0.0)
         lfo_oct = params.get("lfo_filter_oct", 0.0)
-        if not (amount or keytrack or vel_amt or lfo_oct):
+        if not (amount or keytrack or vel_amt or lfo_oct
+                or params.get("mod_filter")):
             return shared
         octaves = lfo_oct
         if amount:

@@ -15,7 +15,8 @@ def store(tmp_path):
 
 def test_first_run_seeds_default(store):
     assert store.names() == ["Default"]
-    assert store.load("Default").param_for(CC, 1, 1) == "fm_depth"
+    assert store.load("Default").param_for(CC, 1, 1) is None
+    assert store.load("Default").param_for(CC, 1, 7) == "master_gain"
 
 
 def test_names_default_first_then_sorted(store):
@@ -30,7 +31,7 @@ def test_save_load_roundtrip(store):
     store.save(p)
     loaded = store.load("Default")
     assert loaded.source_for("osc1_level") == Source(CC, 74, 3)
-    assert loaded.param_for(CC, 1, 1) == "fm_depth"
+    assert loaded.param_for(CC, 1, 7) == "master_gain"
 
 
 def test_unknown_params_survive_roundtrip(store):
@@ -105,10 +106,10 @@ def test_delete_default_refused(store):
 
 def test_reset_default_restores_factory(store):
     p = store.load("Default")
-    p.clear("fm_depth")
+    p.clear("master_gain")
     store.save(p)
     store.reset_default()
-    assert store.load("Default").source_for("fm_depth") is not None
+    assert store.load("Default").source_for("master_gain") is not None
 
 
 def test_corrupt_file_skipped_with_warning(store):
@@ -137,7 +138,7 @@ def test_open_active_recovers_corrupt_default(store):
     (store.profiles_dir / "Default.json").write_text("garbage")
     store.set_active("Default")
     p = store.open_active()
-    assert p.param_for(CC, 1, 1) == "fm_depth"
+    assert p.param_for(CC, 1, 7) == "master_gain"
     assert any("Default" in w for w in store.warnings)
 
 

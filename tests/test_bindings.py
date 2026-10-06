@@ -101,7 +101,7 @@ def test_default_profile_matches_legacy_cc_map():
     p = default_profile()
     assert p.name == DEFAULT_NAME
     expected = {
-        1: "fm_depth", 7: "master_gain",
+        7: "master_gain",
         20: "fx_chorus", 21: "fx_delay", 22: "fx_reverb", 23: "fx_bitcrush",
         26: "detune2_semitones", 27: "detune2_cents",
         28: "osc2_level", 29: "osc1_level", 30: "mod_mode",

@@ -13,7 +13,7 @@ from PySide6.QtWidgets import QApplication, QGroupBox  # noqa: E402
 from midi_synth.bindings import CC, Source  # noqa: E402
 from midi_synth.engine import SynthEngine  # noqa: E402
 from midi_synth.gui.bridge import Bridge  # noqa: E402
-from midi_synth.gui.main_window import MainWindow  # noqa: E402
+from midi_synth.gui.main_window import HIDDEN_GROUPS, MainWindow  # noqa: E402
 from midi_synth.midi_router import MidiRouter  # noqa: E402
 from midi_synth.params import build_registry  # noqa: E402
 from midi_synth.profiles import ProfileStore  # noqa: E402
@@ -42,12 +42,14 @@ def rig(qapp, tmp_path):
 
 def test_every_param_has_a_control(rig):
     _, registry, _, _, window = rig
-    assert set(window.controls) == set(registry.ids())
+    hidden = {p.id for p in registry if p.group in HIDDEN_GROUPS}
+    assert hidden
+    assert set(window.controls) == set(registry.ids()) - hidden
 
 
 def test_default_bindings_show_as_badges(rig):
     *_, window = rig
-    assert window.controls["fm_depth"].badge.text() == "CC 1"
+    assert window.controls["master_gain"].badge.text() == "CC 7"
 
 
 def test_gui_edit_reaches_engine(rig):
@@ -83,9 +85,9 @@ def test_escape_cancels_learn(rig):
 
 def test_clear_binding(rig):
     _, _, router, store, window = rig
-    window._on_clear_requested("fm_depth")
-    assert window.controls["fm_depth"].badge.text() == ""
-    assert store.load("Default").source_for("fm_depth") is None
+    window._on_clear_requested("master_gain")
+    assert window.controls["master_gain"].badge.text() == ""
+    assert store.load("Default").source_for("master_gain") is None
 
 
 def test_profile_switch_swaps_bindings(rig):
@@ -94,10 +96,10 @@ def test_profile_switch_swaps_bindings(rig):
     window._reload_profiles("Blank")
     window._switch("Blank")
     assert router.profile.name == "Blank"
-    assert window.controls["fm_depth"].badge.text() == ""
+    assert window.controls["master_gain"].badge.text() == ""
     assert store.active_name() == "Blank"
     window._switch("Default")
-    assert window.controls["fm_depth"].badge.text() == "CC 1"
+    assert window.controls["master_gain"].badge.text() == "CC 7"
 
 
 def test_delete_and_default_protection(rig):
@@ -234,7 +236,8 @@ def test_every_group_present_and_controls_do_not_overlap(rig):
     _fit(window, 1700, 1000)
     boxes = {b.title(): b for b in window.findChildren(QGroupBox)}
     from midi_synth.gui.main_window import MERGED_GROUPS
-    shown = {MERGED_GROUPS.get(p.group, (p.group,))[0] for p in registry}
+    shown = {MERGED_GROUPS.get(p.group, (p.group,))[0] for p in registry
+             if p.group not in HIDDEN_GROUPS}
     assert set(boxes) == shown == set(GROUP_POSITIONS)
     for title, box in boxes.items():
         controls = [c for c in box.findChildren(ParamControl)]

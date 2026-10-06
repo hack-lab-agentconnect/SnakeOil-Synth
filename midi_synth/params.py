@@ -25,6 +25,7 @@ from .config import (
     DELAY_DIVISION_NAMES,
 )
 from .filters import LPF_MIN_HZ, LPF_MAX_HZ
+from .modmatrix import DEST_NAMES, NUM_SLOTS, SOURCES
 
 CONTINUOUS = "continuous"
 TOGGLE = "toggle"
@@ -32,6 +33,11 @@ CHOICE = "choice"
 
 EFFECT_NAMES = ("chorus", "delay", "reverb", "bitcrush")
 MASTER_GAIN_MAX = 1.2
+
+
+def format_percent(value):
+    """Signed whole percent: '+37%', '-100%'."""
+    return "%+d%%" % round(value * 100.0)
 
 
 def format_seconds(value):
@@ -335,6 +341,29 @@ def build_registry(engine):
               get=lambda: p["tempo_bpm"], set=engine.set_tempo_bpm,
               tooltip="Manual tempo, used when no MIDI clock is arriving."),
     ]
+    def mod_row(i):
+        row = engine.mod_rows[i - 1]
+        group = "Mod Matrix"
+        return [
+            Param(id="mod%d_src" % i, label="Source", group=group, kind=CHOICE,
+                  choices=SOURCES, get=lambda: row[0],
+                  set=lambda v: engine.set_mod_src(i, v),
+                  tooltip="What drives matrix row %d." % i),
+            Param(id="mod%d_amt" % i, label="Scale", group=group,
+                  kind=CONTINUOUS, minimum=-1.0, maximum=1.0,
+                  formatter=format_percent,
+                  get=lambda: row[1], set=lambda v: engine.set_mod_amt(i, v),
+                  tooltip="Modulation relative to the destination's current "
+                          "value: value x (1 + scale x source). A destination "
+                          "at 0 stays at 0."),
+            Param(id="mod%d_dst" % i, label="Destination", group=group,
+                  kind=CHOICE, choices=DEST_NAMES, get=lambda: row[2],
+                  set=lambda v: engine.set_mod_dst(i, v),
+                  tooltip="What matrix row %d modulates." % i),
+        ]
+
+    for slot in range(1, NUM_SLOTS + 1):
+        params += mod_row(slot)
     pingpong = Param(
         id="fx_delay_pingpong", label="Ping-pong", group="Effects", kind=TOGGLE,
         under="fx_delay_time", get=lambda: fx.delay.pingpong,

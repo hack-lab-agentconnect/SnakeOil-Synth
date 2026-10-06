@@ -250,6 +250,51 @@ coefficients are recalculated every block instead. A filter pushed to 20 kHz or 
 the LFO is bypassed for that block, and the LFO can close an otherwise open (20 kHz)
 filter.
 
+## Mod Matrix
+
+Eight rows, each `Source | Scale | Destination`, all registry params
+(`mod1_src` .. `mod8_dst`, group "Mod Matrix") so patches and MIDI learn cover
+them. The factory matrix is empty and an empty matrix (or rows with source or
+destination `none`, or scale 0) costs nothing and leaves the sound untouched.
+The matrix window is not built yet, so the group is hidden in the GUI for now;
+use the console `mod` command.
+
+Sources:
+
+| Source | Range |
+|---|---|
+| `Note Number` | `(note - 60) / 60`, clipped to -1..+1 (middle C = 0); per voice, so two notes held at once are modulated differently |
+| `LFO 1`, `LFO 2` | the raw LFO output, -1..+1, independent of the LFO's own depth knob; an LFO used by a row runs even with depth 0 (and then does not drive its own destination) |
+| `Mod Wheel` | CC 1 / 127, 0..1 |
+| `Aftertouch` | channel pressure / 127, 0..1 |
+
+Wheel and aftertouch are fed from the raw MIDI messages before MIDI learn
+bindings are applied, so a binding on CC 1 or aftertouch keeps working and the
+matrix still sees the controller. Both are smoothed per block (one-pole,
+`MOD_SMOOTH = 0.3`) to avoid zipper noise.
+
+Scale is -100%..+100% and is **relative to the destination's current value**:
+`effective = value x (1 + sum(scale x source))`, clamped to the destination's
+own range; several rows on one destination add their percentages first. The
+knob/slider/patch always keeps the base value. Consequence: a destination whose
+current value is 0 stays 0 (Osc 2 Level at 0, PWM at 0, Resonance at 0, Env
+Amount at 0 ...), so give it a non-zero value first. Example: Filter Cutoff at
+1000 Hz with `Mod Wheel +50%` gives 1000 Hz with the wheel down and 1500 Hz fully up.
+
+Destinations so far: `Osc 1: Level`, `Osc 1: PWM`, `Osc 1: Sq Level`,
+`Osc 2: Level`, `Osc 2: Tune`, `Osc 2: Fine`, `Osc 2: PWM`, `Modulation Amount`,
+`Filter: Cutoff`, `Filter: Resonance` (per voice or on the master bus, where
+Note Number means the last played note), `Filter: Env Amount`,
+`Filter: Key Trk`, `Filter: Vel>Cut`. Envelopes, unison, tempo and effects follow.
+Matrix rows apply in addition to the LFOs' own destinations.
+
+Console: `mod <slot 1-8> <source|none> <scale -100..100> <destination|none>`,
+e.g. `mod 1 lfo1 40 filter:cutoff` or `mod 2 note -25 osc1:level`. Sources are
+`note lfo1 lfo2 wheel aftertouch` and destinations are the lowercase name with
+spaces removed (`filter:vel>cut`, `modulationamount`), case-insensitive.
+`mod clear [slot]` empties one row or all of them. (`mod <0-1>` with a single
+number still sets the modulation amount.)
+
 ## Unison
 
 The *Unison* group stacks several voices on every note: *Voices* 1-12 (default 1 = off,
@@ -391,11 +436,10 @@ mode other than `off` while `mod` is 0 auto-raises it to 0.7.
 
 ## Default profile CC map
 
-This is the seeded `Default` profile; it is now editable via MIDI learn.
+This is the seeded `Default` profile; it is now editable via MIDI learn. CC 1 (mod wheel) is no longer bound: it feeds the Mod Matrix instead (profiles you saved earlier keep their own bindings).
 
 | Control | Action |
 |---|---|
-| CC 1 | modulation amount (0..1) |
 | CC 7 | master volume |
 | CC 20 | toggle Chorus |
 | CC 21 | toggle Delay |

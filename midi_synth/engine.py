@@ -50,12 +50,28 @@ from .config import (
     DEFAULT_TEMPO,
     DELAY_DIVISION_BEATS,
     DEFAULT_DELAY_DIVISION,
+    MOD_SMOOTH,
 )
 from .filters import LowPass, LPF_MIN_HZ, LPF_MAX_HZ, lpf_coefficients
 from .lfo import LFO
 from .voice import IDLE, Voice, midi_note_to_freq
 from .effects import EffectChain
 from .tempo import TempoTracker
+from .modmatrix import (
+    DEST_NAMES,
+    NUM_SLOTS,
+    SOURCES,
+    SRC_AFTERTOUCH,
+    SRC_LFO1,
+    SRC_LFO2,
+    SRC_NOTE,
+    SRC_WHEEL,
+    VOICE,
+    destination,
+    effective,
+    note_source,
+    smooth,
+)
 
 
 class SynthEngine:
@@ -132,6 +148,14 @@ class SynthEngine:
         self.tempo = TempoTracker()
         self.delay_manual_ms = self.effects.delay.time_ms
         self._last_freq = None
+        self._last_note = None
+        self.mod_rows = [["none", 0.0, "none"] for _ in range(NUM_SLOTS)]
+        self._mod_dsts = ()
+        self._mod_lfo = [False, False]
+        self._mod_wheel_used = False
+        self._mod_at_used = False
+        self._mod_wheel = self._mod_at = 0.0
+        self._wheel_s = self._at_s = 0.0
         self._master_bypassed = False
         self._order = 0
         self._group_counter = 0
@@ -382,6 +406,163 @@ class SynthEngine:
             self.params["pitch_bend"] = normalized * PITCH_BEND_RANGE
             self._refresh_derived()
 
+    def _refresh_mod(self):
+        """Rebuild the cached active-row tables after a matrix change."""
+        by_dst = {}
+        lfo = [False, False]
+        wheel = at = False
+        for src, amt, dst in self.mod_rows:
+            if src == "none" or dst == "none" or amt == 0.0:
+                continue
+            si = SOURCES.index(src)
+            if si == SRC_LFO1:
+                lfo[0] = True
+            elif si == SRC_LFO2:
+                lfo[1] = True
+            elif si == SRC_WHEEL:
+                wheel = True
+            elif si == SRC_AFTERTOUCH:
+                at = True
+            d = destination(dst)
+            if d.kind == VOICE:
+                by_dst.setdefault(d.param_id, (d, []))[1].append((amt, si))
+        if wheel and not self._mod_wheel_used:
+            self._wheel_s = self._mod_wheel
+        if at and not self._mod_at_used:
+            self._at_s = self._mod_at
+        self._mod_wheel_used = wheel
+        self._mod_at_used = at
+        self._mod_lfo = lfo
+        self._mod_dsts = tuple(
+            (d, tuple(terms), any(s == SRC_NOTE for _, s in terms))
+            for d, terms in by_dst.values())
+
+    @staticmethod
+    def _mod_slot(slot):
+        try:
+            index = int(slot)
+        except (TypeError, ValueError):
+            raise ValueError("mod slot must be 1-%d, got %r" % (NUM_SLOTS, slot)) from None
+        if not 1 <= index <= NUM_SLOTS:
+            raise ValueError("mod slot must be 1-%d, got %r" % (NUM_SLOTS, slot))
+        return index - 1
+
+    def set_mod_src(self, slot, name):
+        index = self._mod_slot(slot)
+        if name not in SOURCES:
+            raise ValueError("unknown mod source: %r (choose from %s)"
+                             % (name, ", ".join(SOURCES)))
+        with self.lock:
+            self.mod_rows[index][0] = name
+            self._refresh_mod()
+            return name
+
+    def set_mod_amt(self, slot, value):
+        index = self._mod_slot(slot)
+        number = float(value)
+        if number != number or number in (float("inf"), float("-inf")):
+            raise ValueError("mod scale must be a finite number, got %r" % (value,))
+        with self.lock:
+            self.mod_rows[index][1] = min(max(number, -1.0), 1.0)
+            self._refresh_mod()
+            return self.mod_rows[index][1]
+
+    def set_mod_dst(self, slot, name):
+        index = self._mod_slot(slot)
+        if name not in DEST_NAMES:
+            raise ValueError("unknown mod destination: %r (choose from %s)"
+                             % (name, ", ".join(DEST_NAMES)))
+        with self.lock:
+            self.mod_rows[index][2] = name
+            self._refresh_mod()
+            return name
+
+    def set_mod_wheel(self, value):
+        with self.lock:
+            self._mod_wheel = min(max(float(value), 0.0), 1.0)
+            if not self._mod_wheel_used:
+                self._wheel_s = self._mod_wheel
+
+    def set_aftertouch(self, value):
+        with self.lock:
+            self._mod_at = min(max(float(value), 0.0), 1.0)
+            if not self._mod_at_used:
+                self._at_s = self._mod_at
+
+    def _mod_values(self):
+        """Per-block source values indexed like SOURCES (note slot unused)."""
+        last = self._lfo_last
+        return (0.0, 0.0, last[0], last[1], self._wheel_s, self._at_s)
+
+    def mod_sources(self, note=None):
+        """Current value of every matrix source (note None = last played)."""
+        with self.lock:
+            vals = self._mod_values()
+            return {
+                "Note Number": note_source(self._last_note if note is None else note),
+                "LFO 1": vals[SRC_LFO1],
+                "LFO 2": vals[SRC_LFO2],
+                "Mod Wheel": vals[SRC_WHEEL],
+                "Aftertouch": vals[SRC_AFTERTOUCH],
+            }
+
+    def modulated_value(self, param_id, note=None):
+        """Effective value of a destination (its base value when unmodulated)."""
+        with self.lock:
+            for d, terms, _ in self._mod_dsts:
+                if d.param_id == param_id:
+                    nv = note_source(self._last_note if note is None else note)
+                    return self._mod_eff(d, terms, self._mod_values(), nv)
+            return self.params[param_id]
+
+    def _mod_eff(self, d, terms, vals, note_val):
+        return effective(
+            self.params[d.param_id],
+            [(a, note_val if s == SRC_NOTE else vals[s]) for a, s in terms],
+            d.lo, d.hi)
+
+    @staticmethod
+    def _mod_apply(view, pid, value):
+        view[pid] = value
+        if pid == "fm_depth":
+            view["mod_index"] = value * FM_INDEX_MAX
+        elif pid in ("lpf_cutoff", "lpf_resonance"):
+            view["mod_filter"] = True
+
+    def _mod_prepare(self, vals):
+        """Evaluate the matrix for one block.
+
+        Returns (shared params view, note-dependent (dest, terms) pairs,
+        master-filter overrides).
+        """
+        params = self.params
+        master = params["lpf_mode"] == "master"
+        shared = {}
+        note_dsts = []
+        master_over = {}
+        for d, terms, note_dep in self._mod_dsts:
+            pid = d.param_id
+            if master and pid in ("lpf_cutoff", "lpf_resonance"):
+                nv = note_source(self._last_note) if note_dep else 0.0
+                master_over[pid] = self._mod_eff(d, terms, vals, nv)
+            elif note_dep:
+                note_dsts.append((d, terms))
+            else:
+                shared[pid] = self._mod_eff(d, terms, vals, 0.0)
+        view = params
+        if shared or note_dsts:
+            view = dict(params)
+            for pid, value in shared.items():
+                self._mod_apply(view, pid, value)
+        return view, note_dsts, master_over
+
+    def _mod_voice_view(self, shared, note_dsts, vals, note):
+        view = dict(shared)
+        nv = note_source(note)
+        for d, terms in note_dsts:
+            self._mod_apply(view, d.param_id, self._mod_eff(d, terms, vals, nv))
+        return view
+
     def _allocate_voice(self):
         for v in self.voices:
             if not v.active:
@@ -441,6 +622,7 @@ class SynthEngine:
                     and (not self.params["glide_legato"] or held)):
                 glide_from = self._last_freq
             self._last_freq = midi_note_to_freq(note)
+            self._last_note = note
             if count == 1:
                 voice.note_on(note, vel, self._order, glide_from, glide_time)
             else:
@@ -591,7 +773,8 @@ class SynthEngine:
         stages = ((self.lfo, "lfo", "lfo2-rate"), (self.lfo2, "lfo2", "lfo1-rate"))
         for i, (lfo, pre, cross) in enumerate(stages):
             depth = p[pre + "_depth"]
-            if not depth > 0.0:
+            routed = depth > 0.0
+            if not routed and not self._mod_lfo[i]:
                 self.lfo_rate_eff[i] = p[pre + "_rate"]
                 continue
             dest = p[pre + "_dest"]
@@ -603,8 +786,11 @@ class SynthEngine:
                 rate = min(max(rate, LFO_RATE_FLOOR), LFO_RATE_CEIL)
             self.lfo_rate_eff[i] = rate
             mid, arr = lfo.next_block(
-                n, self.sr, rate, p[pre + "_wave"], want_array=dest == "amp")
+                n, self.sr, rate, p[pre + "_wave"],
+                want_array=routed and dest == "amp")
             cur[i] = mid
+            if not routed:
+                continue
             first = dest not in seen
             seen.add(dest)
             if dest == "pitch":
@@ -623,13 +809,17 @@ class SynthEngine:
         self._lfo_last = cur
         return "filter" in seen
 
-    def _master_lfo_coeffs(self):
+    def _master_lfo_coeffs(self, over=None, lfo_oct=True):
+        """Master-bus coefficients with LFO filter octaves and matrix overrides."""
         p = self.params
-        cutoff = p["lpf_cutoff"] * 2.0 ** p["lfo_filter_oct"]
+        over = over or {}
+        cutoff = over.get("lpf_cutoff", p["lpf_cutoff"])
+        if lfo_oct:
+            cutoff *= 2.0 ** p["lfo_filter_oct"]
         cutoff = min(max(cutoff, LPF_MIN_HZ), 0.45 * self.sr)
         if cutoff >= LPF_MAX_HZ / 1.01:
             return None
-        return lpf_coefficients(cutoff, p["lpf_resonance"], self.sr)
+        return lpf_coefficients(cutoff, over.get("lpf_resonance", p["lpf_resonance"]), self.sr)
 
     def render(self, n=None, apply_effects=True):
         if n is None:
@@ -640,21 +830,35 @@ class SynthEngine:
             if params["delay_sync"]:
                 self._sync_delay()
             lfo_filter = False
-            if params["lfo_depth"] > 0.0 or params["lfo2_depth"] > 0.0:
+            mod = self._mod_dsts
+            if (params["lfo_depth"] > 0.0 or params["lfo2_depth"] > 0.0
+                    or self._mod_lfo[0] or self._mod_lfo[1]):
                 lfo_filter = self._run_lfo(n)
+            view, note_dsts, master_over, vals = params, (), None, None
+            if mod:
+                if self._mod_wheel_used:
+                    self._wheel_s = smooth(self._wheel_s, self._mod_wheel, MOD_SMOOTH)
+                if self._mod_at_used:
+                    self._at_s = smooth(self._at_s, self._mod_at, MOD_SMOOTH)
+                vals = self._mod_values()
+                view, note_dsts, master_over = self._mod_prepare(vals)
             panned = []
             stereo = False
             for v in self.voices:
                 if v.active:
-                    out_v = v.render(n, params)
+                    if note_dsts:
+                        out_v = v.render(
+                            n, self._mod_voice_view(view, note_dsts, vals, v.note))
+                    else:
+                        out_v = v.render(n, view)
                     if v.pan != 0.0:
                         stereo = True
                     panned.append((v.pan, out_v))
                     if not stereo:
                         mix += out_v
             coeffs = params["lpf_coeffs"]
-            if lfo_filter and params["lpf_mode"] == "master":
-                coeffs = self._master_lfo_coeffs()
+            if params["lpf_mode"] == "master" and (lfo_filter or master_over):
+                coeffs = self._master_lfo_coeffs(master_over, lfo_filter)
                 if coeffs is None:
                     self._master_bypassed = True
                 elif self._master_bypassed:
@@ -752,6 +956,9 @@ class SynthEngine:
                 "delay_sync": self.params["delay_sync"],
                 "delay_division": self.params["delay_division"],
                 "effective_bpm": self.effective_bpm(),
+                **{"mod%d_%s" % (i + 1, key): value
+                   for i, r in enumerate(self.mod_rows)
+                   for key, value in zip(("src", "amt", "dst"), r)},
                 "chorus_depth": self.effects.chorus.amount,
                 "delay_time": self.effects.delay.time_ms,
                 "delay_pingpong": self.effects.delay.pingpong,

@@ -16,8 +16,8 @@ def rig():
 
 def test_bound_cc_sets_param(rig):
     engine, _, router = rig
-    assert router.handle_cc(0, 1, 127) is True
-    assert engine.params["fm_depth"] == 1.0
+    assert router.handle_cc(0, 7, 127) is True
+    assert engine.params["master_gain"] == pytest.approx(1.2)
 
 
 def test_unbound_cc_returns_false(rig):
@@ -86,10 +86,10 @@ def test_clear_binding_notifies_and_unbinds(rig):
     _, _, router = rig
     changed = []
     router.on_profile_changed = changed.append
-    router.clear_binding("fm_depth")
-    assert router.profile.source_for("fm_depth") is None
+    router.clear_binding("master_gain")
+    assert router.profile.source_for("master_gain") is None
     assert len(changed) == 1
-    router.clear_binding("fm_depth")        # already clear: no second notification
+    router.clear_binding("master_gain")        # already clear: no second notification
     assert len(changed) == 1
 
 

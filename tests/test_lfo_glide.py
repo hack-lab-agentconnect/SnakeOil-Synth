@@ -437,7 +437,7 @@ def test_gui_has_lfo_and_glide_groups(tmp_path):
     router = MidiRouter(reg, store.open_active())
     window = MainWindow(e, reg, router, store, [], Bridge(reg, router))
     assert "LFO" in GROUP_POSITIONS and "Glide" in GROUP_POSITIONS
-    assert set(window.controls) == set(reg.ids())
+    assert set(window.controls) == {p.id for p in reg if p.group != "Mod Matrix"}
     titles = {b.title() for b in window.findChildren(QGroupBox)}
     assert {"LFO", "Glide"} <= titles
     window.close()

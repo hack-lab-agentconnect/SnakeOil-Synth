@@ -29,6 +29,9 @@ GROUP_POSITIONS = {
     "Glide": (2, 4, 1, 1),
 }
 
+# Registry groups with no widgets yet (the matrix window arrives separately).
+HIDDEN_GROUPS = ("Mod Matrix",)
+
 # Groups whose controls wrap onto a new row after this many columns.
 GROUP_COLUMNS = {"Oscillator 1": 3, "Filter": 3}
 
@@ -206,6 +209,8 @@ class MainWindow(QMainWindow):
         widths = self._block_widths()
         stack_rows = {}
         for param in self.registry:
+            if param.group in HIDDEN_GROUPS:
+                continue
             title, stack = MERGED_GROUPS.get(param.group, (param.group, None))
             box = groups.get(title)
             if box is None:

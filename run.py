@@ -11,6 +11,7 @@ from midi_synth.bindings import default_profile
 from midi_synth.engine import SynthEngine
 from midi_synth.config import DELAY_DIVISION_BEATS
 from midi_synth.midi_input import MidiInput
+from midi_synth.modmatrix import NUM_SLOTS, parse_mod_args
 from midi_synth.midi_router import MidiRouter
 from midi_synth.params import build_registry
 from midi_synth.patches import INIT_NAME, PatchError, PatchStore, apply as apply_patch, capture
@@ -139,6 +140,14 @@ HELP_TEXT = """commands:
   level1/level2 <0-1>        oscillator mix level (osc2 starts at 0)
   mode <off|fm|am|ring|sync> how osc1 modulates osc2
   mod <0-1>                  modulation amount (alias: fm)
+  mod <slot 1-8> <source> <scale -100..100> <destination>  mod matrix row, e.g.
+                             mod 1 lfo1 40 filter:cutoff
+                             sources none note lfo1 lfo2 wheel aftertouch;
+                             destinations: lowercase name, spaces removed
+                             (osc1:level osc2:tune modulationamount filter:cutoff
+                             filter:resonance filter:envamount filter:keytrk
+                             filter:vel>cut ...) or none
+  mod clear [slot]           empty one matrix row, or all of them
   tune2 <-12..12>            osc2 coarse semitones
   cents2 <-0.5..0.5>         osc2 fine cents
   oct1 <on|off>              osc 1 one octave down
@@ -239,6 +248,35 @@ def patch_command(parts, registry, patch_store, defaults):
         print(exc)
 
 
+MOD_USAGE = ("usage: mod <slot 1-8> <none|note|lfo1|lfo2|wheel|aftertouch> "
+             "<scale -100..100> <destination|none>  |  mod clear [slot]")
+
+
+def mod_command(parts, engine):
+    """``mod <slot> <source> <scale> <destination>`` and ``mod clear [slot]``."""
+    if parts[1].lower() == "clear":
+        try:
+            slots = range(1, NUM_SLOTS + 1) if len(parts) == 2 else [int(parts[2])]
+            if len(parts) > 3 or any(not 1 <= s <= NUM_SLOTS for s in slots):
+                raise ValueError
+        except ValueError:
+            print(MOD_USAGE)
+            return
+        for slot in slots:
+            engine.set_mod_src(slot, "none")
+            engine.set_mod_amt(slot, 0.0)
+            engine.set_mod_dst(slot, "none")
+        return
+    try:
+        slot, source, scale, dest = parse_mod_args(parts[1:])
+    except ValueError:
+        print(MOD_USAGE)
+        return
+    engine.set_mod_src(slot, source)
+    engine.set_mod_amt(slot, scale)
+    engine.set_mod_dst(slot, dest)
+
+
 def rec_command(parts, engine, recorder, config_dir):
     usage = "usage: rec start [path] | rec stop"
     if recorder is None:
@@ -308,6 +346,8 @@ def console_loop(engine, registry=None, patch_store=None, patch_defaults=None,
                 engine.panic()
             elif cmd == "alloff":
                 engine.all_notes_off()
+            elif cmd == "mod" and (len(parts) > 2 or parts[1:] == ["clear"]):
+                mod_command(parts, engine)
             elif cmd in ("fm", "mod"):
                 engine.set_fm_depth(float(parts[1]))
             elif cmd == "mode":
