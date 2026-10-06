@@ -320,6 +320,7 @@ class MainWindow(QMainWindow):
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
         self._timer.start(250)
+        self._meter_failed = False
         self._meter_timer = QTimer(self)
         self._meter_timer.timeout.connect(self._meter_tick)
         self._meter_timer.start(METER_INTERVAL_MS)
@@ -598,8 +599,10 @@ class MainWindow(QMainWindow):
         try:
             left, right, clipped = self.engine.take_meter()
             self.meter.update_levels(left, right, clipped)
-        except Exception:
-            pass
+        except Exception as exc:
+            if not self._meter_failed:
+                self._meter_failed = True
+                self.statusBar().showMessage("Level meter failed: %s" % exc, 10000)
 
     # ---- keyboard and recording ---------------------------------------
 

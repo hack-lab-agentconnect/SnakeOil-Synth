@@ -122,6 +122,9 @@ class Delay:
 
     def set_time_target_ms(self, time_ms):
         """Glide to a new delay time linearly across the next processed block."""
+        if not self.enabled:
+            self.set_time_ms(time_ms)   # nothing is processed: snap, no later sweep
+            return
         self.target_ms = min(max(float(time_ms), 1.0), 4000.0)
 
     def set_pingpong(self, on):

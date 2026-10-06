@@ -267,18 +267,17 @@ def mod_command(parts, engine):
             print(MOD_USAGE)
             return
         for slot in slots:
-            engine.set_mod_src(slot, "none")
-            engine.set_mod_amt(slot, 0.0)
-            engine.set_mod_dst(slot, "none")
+            engine.set_mod_row(slot, "none", 0.0, "none")
         return
     try:
         slot, source, scale, dest = parse_mod_args(parts[1:])
     except ValueError:
         print(MOD_USAGE)
         return
-    engine.set_mod_src(slot, source)
-    engine.set_mod_amt(slot, scale)
-    engine.set_mod_dst(slot, dest)
+    try:
+        engine.set_mod_row(slot, source, scale, dest)
+    except ValueError:
+        print(MOD_USAGE)
 
 
 def rec_command(parts, engine, recorder, config_dir):

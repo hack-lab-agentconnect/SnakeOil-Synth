@@ -262,12 +262,12 @@ In the window the *Mod Matrix* box is a small table: a header (*Source*, *Scale*
 plain drop-down. *Scale* is a horizontal bipolar slider (-100% .. +100%, centre = 0, the
 filled bar grows from the centre toward the handle, the value such as `+37%` is drawn on
 it); double-click it to reset to 0. The destination drop-down groups its entries under
-non-selectable headers (*Osc 1*, *Osc 2*, *Filter*); entries without a group such as
-*Modulation Amount* sit at the top level, and `none` comes first. Every control in the box
+non-selectable headers (*Osc 1*, *Osc 2*, *Filter*, *Filter Env*, *Amp Env*, *Chorus*, *Delay*, *Reverb*, *Bitcrush*, *Unison*); entries without a group (*Modulation Amount*, *Tempo*)
+sit at the top level, and `none` comes first. Every control in the box
 supports MIDI learn like the rest of the window (in learn mode click a scale slider, then
 move a controller; or right-click for *MIDI Learn* / *Clear binding*); the binding is shown
 in the control's tooltip and an armed control gets the orange highlight. Hover the box
-for the scale rule below. The console `mod` command still works too.
+for the scale rule below. MIDI-learning a scale slider from a CC cannot land exactly on 0 (double-click it to reset to 0). The console `mod` command still works too.
 
 Sources:
 

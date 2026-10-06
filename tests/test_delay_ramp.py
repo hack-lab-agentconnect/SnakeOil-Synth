@@ -121,11 +121,11 @@ def test_target_is_clamped_to_engine_limits():
     assert d.time_ms == 1.0
 
 
-def test_disabled_delay_keeps_the_target_pending():
+def test_disabled_delay_snaps_the_target():
     d = Delay(SR, enabled=False)
     d.set_time_target_ms(900.0)
-    d.process(signal(64, 1))
-    assert d.time_ms == 300.0
+    assert d.time_ms == 900.0
+    assert d.target_ms is None
     d.enabled = True
     d.process(signal(64, 1))
     assert d.time_ms == pytest.approx(900.0)

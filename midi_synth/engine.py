@@ -1,3 +1,4 @@
+import math
 import threading
 
 import numpy as np
@@ -577,15 +578,40 @@ class SynthEngine:
             self._refresh_mod()
             return name
 
-    def set_mod_wheel(self, value):
+    def set_mod_row(self, slot, src, amt, dst):
+        """Set a whole matrix row atomically (all validated before any change)."""
+        index = self._mod_slot(slot)
+        if src not in SOURCES:
+            raise ValueError("unknown mod source: %r (choose from %s)"
+                             % (src, ", ".join(SOURCES)))
+        number = float(amt)
+        if not math.isfinite(number):
+            raise ValueError("mod scale must be a finite number, got %r" % (amt,))
+        if dst not in DEST_NAMES:
+            raise ValueError("unknown mod destination: %r (choose from %s)"
+                             % (dst, ", ".join(DEST_NAMES)))
         with self.lock:
-            self._mod_wheel = min(max(float(value), 0.0), 1.0)
+            self.mod_rows[index][:] = [src, min(max(number, -1.0), 1.0), dst]
+            self._refresh_mod()
+
+    @staticmethod
+    def _finite_unit(value, what):
+        number = float(value)
+        if not math.isfinite(number):
+            raise ValueError("%s must be a finite number, got %r" % (what, value))
+        return min(max(number, 0.0), 1.0)
+
+    def set_mod_wheel(self, value):
+        number = self._finite_unit(value, "mod wheel")
+        with self.lock:
+            self._mod_wheel = number
             if not self._mod_wheel_used:
                 self._wheel_s = self._mod_wheel
 
     def set_aftertouch(self, value):
+        number = self._finite_unit(value, "aftertouch")
         with self.lock:
-            self._mod_at = min(max(float(value), 0.0), 1.0)
+            self._mod_at = number
             if not self._mod_at_used:
                 self._at_s = self._mod_at
 
@@ -791,6 +817,7 @@ class SynthEngine:
     def all_notes_off(self):
         with self.lock:
             self._sustained.clear()
+            self._reset_aftertouch()
             for v in self.voices:
                 if v.active:
                     v.note_off()
@@ -816,11 +843,18 @@ class SynthEngine:
                 v.flt_env.level = 0.0
             self._sustained.clear()
             self.sustain = False
+            self._mod_wheel = self._wheel_s = 0.0
+            self._reset_aftertouch()
+
+    def _reset_aftertouch(self):
+        self._mod_at = self._at_s = 0.0
 
     def reset_controllers(self):
         with self.lock:
             self.set_pitch_bend(0.0)
             self.set_sustain(False)
+            self._mod_wheel = self._wheel_s = 0.0
+            self._reset_aftertouch()
 
     def active_note_count(self):
         with self.lock:
@@ -887,7 +921,10 @@ class SynthEngine:
         delay = self.effects.delay
         current = delay.time_ms if delay.target_ms is None else delay.target_ms
         if abs(ms - current) > 0.5:
-            delay.set_time_ms(ms)
+            if self._mod_tempo is not None:
+                delay.set_time_target_ms(ms)   # tempo moves every block: glide
+            else:
+                delay.set_time_ms(ms)
 
     def _tempo_bpm(self, vals):
         """Tempo in use (external clock or manual) with the matrix applied."""
@@ -1040,6 +1077,12 @@ class SynthEngine:
                     if not stereo:
                         mix += out_v
             coeffs = params["lpf_coeffs"]
+            if self._master_bypassed and not (
+                    params["lpf_mode"] == "master" and (lfo_filter or master_over)):
+                # whatever bypassed the filter is gone: resume from clean state
+                self.master_lpf.reset()
+                self.master_lpf_r.reset()
+                self._master_bypassed = False
             if params["lpf_mode"] == "master" and (lfo_filter or master_over):
                 coeffs = self._master_lfo_coeffs(master_over, lfo_filter)
                 if coeffs is None:
