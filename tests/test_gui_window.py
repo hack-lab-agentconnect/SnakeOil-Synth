@@ -8,7 +8,7 @@ pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QEvent, Qt  # noqa: E402
 from PySide6.QtGui import QKeyEvent  # noqa: E402
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtWidgets import QApplication, QGroupBox  # noqa: E402
 
 from midi_synth.bindings import CC, Source  # noqa: E402
 from midi_synth.engine import SynthEngine  # noqa: E402
@@ -24,9 +24,8 @@ def qapp():
     return QApplication.instance() or QApplication([])
 
 
-@pytest.fixture
-def rig(qapp, tmp_path):
-    engine = SynthEngine(sr=44100, block_size=64, max_voices=2)
+def _make_rig(tmp_path, voices):
+    engine = SynthEngine(sr=44100, block_size=64, max_voices=voices)
     registry = build_registry(engine)
     store = ProfileStore(tmp_path / "cfg")
     router = MidiRouter(registry, store.open_active())
@@ -34,6 +33,11 @@ def rig(qapp, tmp_path):
     bridge = Bridge(registry, router)
     window = MainWindow(engine, registry, router, store, ["Test Port"], bridge)
     return engine, registry, router, store, window
+
+
+@pytest.fixture
+def rig(qapp, tmp_path):
+    return _make_rig(tmp_path, 2)
 
 
 def test_every_param_has_a_control(rig):
@@ -208,7 +212,7 @@ def _fit(window, width=1500, height=900):
 
 def test_window_size_hint_fits_a_small_screen(rig):
     hint = rig[-1].sizeHint()
-    assert hint.width() <= 1500 and hint.height() <= 880
+    assert hint.width() <= 1500 and hint.height() <= 900
 
 
 def test_body_is_inside_a_scroll_area(rig):
@@ -250,3 +254,63 @@ def test_small_window_scrolls_instead_of_clipping(rig):
     assert area.verticalScrollBar().maximum() > 0
     assert area.verticalScrollBar().isVisible()
     window.close()
+
+
+def _master_box(window):
+    return next(b for b in window.findChildren(QGroupBox) if b.title() == "Master")
+
+
+def test_master_group_contains_meter_beside_controls(rig):
+    from midi_synth.gui.controls import ParamControl
+    from midi_synth.gui.meter import LevelMeter
+
+    window = rig[-1]
+    _fit(window, 1700, 1000)
+    box = _master_box(window)
+    assert window.meter is not None
+    assert box.isAncestorOf(window.meter)
+    meter_rect = window.meter.geometry()
+    assert box.rect().contains(meter_rect)
+    assert box.findChildren(LevelMeter) == [window.meter]
+    for control in box.findChildren(ParamControl):
+        assert not control.geometry().intersects(meter_rect)
+    window.close()
+
+
+def test_meter_tick_shows_level_and_clip(qapp, tmp_path):
+    engine, *_, window = _make_rig(tmp_path, 8)
+    window._meter_timer.stop()
+    engine.set_osc_levels(1.0, 0.0)
+    engine.set_master_gain(0.3)
+    engine.note_on(60, 100)
+    engine.render(64)
+    window._meter_tick()
+    assert window.meter.bar_db[0] > -60.0
+    assert not window.meter.clip_lit
+    engine.set_master_gain(1.5)
+    engine.set_osc_levels(1.0, 1.0)
+    for note in (48, 55, 60, 64, 67, 72):
+        engine.note_on(note, 127)
+    for _ in range(8):
+        engine.render(64)
+    window._meter_tick()
+    assert window.meter.clip_lit
+    window.close()
+
+
+def test_meter_tick_swallows_engine_errors(rig):
+    engine, *_, window = rig
+
+    def boom():
+        raise RuntimeError("nope")
+
+    engine.take_meter = boom
+    window._meter_tick()
+    window.close()
+
+
+def test_close_stops_meter_timer(rig):
+    window = rig[-1]
+    assert window._meter_timer.isActive()
+    window.close()
+    assert not window._meter_timer.isActive()

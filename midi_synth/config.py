@@ -46,7 +46,7 @@ DEFAULT_FLT_ENV = {
     "release": 0.3,
 }
 
-LFO_WAVES = ("sine", "triangle", "saw", "square", "random")
+LFO_WAVES = ("sine", "triangle", "saw", "square", "random", "random-glide")
 LFO_DESTS = ("pitch", "filter", "pwm", "amp")
 LFO_RATE_MIN = 0.05
 LFO_RATE_MAX = 20.0
@@ -81,3 +81,5 @@ UNISON_MAX = 12
 UNISON_DETUNE_MAX = 50.0
 DEFAULT_UNISON_DETUNE = 15.0
 DEFAULT_UNISON_SPREAD = 0.5
+
+CLIP_THRESHOLD = 1.0

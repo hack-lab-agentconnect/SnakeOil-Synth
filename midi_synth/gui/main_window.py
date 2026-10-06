@@ -11,6 +11,7 @@ from ..patches import INIT_NAME, PatchError, apply as apply_patch, capture
 from ..profiles import ProfileError
 from ..recorder import recording_path
 from .controls import ParamControl
+from .meter import LevelMeter
 from .qwerty import QwertyKeyboard
 
 GROUP_POSITIONS = {
@@ -22,14 +23,15 @@ GROUP_POSITIONS = {
     "Filter": (1, 0, 1, 1),
     "Filter Env": (1, 1, 1, 1),
     "Amp Envelope": (1, 2, 1, 1),
-    "LFO": (1, 3, 1, 1),
-    "Glide": (1, 4, 1, 1),
+    "LFO 1": (1, 3, 1, 1),
+    "LFO 2": (1, 4, 1, 1),
     "Effects": (2, 0, 1, 3),
-    "Unison": (2, 3, 1, 2),
+    "Unison": (2, 3, 1, 1),
+    "Glide": (2, 4, 1, 1),
 }
 
 # Groups whose controls wrap onto a new row after this many columns.
-GROUP_COLUMNS = {"Oscillator 1": 3, "Filter": 3, "LFO": 2}
+GROUP_COLUMNS = {"Oscillator 1": 3, "Filter": 3, "LFO 1": 1, "LFO 2": 1}
 
 # Groups laid out as toggle "blocks": each toggle heads a block whose
 # dependent controls (Param.under) sit in a row beneath it.
@@ -37,6 +39,7 @@ BLOCK_GROUPS = ("Effects",)
 BLOCK_MAX_COLUMNS = 6
 
 MIN_WINDOW_SIZE = (640, 420)
+METER_INTERVAL_MS = 33
 
 
 class _BodyScroll(QScrollArea):
@@ -219,6 +222,9 @@ class MainWindow(QMainWindow):
             box.layout().setSpacing(2)
         self.tempo_label = QLabel("")
         groups["Tempo"].layout().addWidget(self.tempo_label, 1, 0)
+        self.meter = LevelMeter()
+        master = groups["Master"].layout()
+        master.addWidget(self.meter, 0, master.columnCount(), Qt.AlignTop)
         grid = QGridLayout()
         grid.setContentsMargins(6, 2, 6, 4)
         grid.setSpacing(4)
@@ -257,6 +263,9 @@ class MainWindow(QMainWindow):
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
         self._timer.start(250)
+        self._meter_timer = QTimer(self)
+        self._meter_timer.timeout.connect(self._meter_tick)
+        self._meter_timer.start(METER_INTERVAL_MS)
 
     # ---- profiles -----------------------------------------------------
 
@@ -528,6 +537,13 @@ class MainWindow(QMainWindow):
         if self.recorder is not None and self.recorder.active:
             self.rec_label.setText("REC %02d:%02d" % divmod(int(self.recorder.elapsed), 60))
 
+    def _meter_tick(self):
+        try:
+            left, right, clipped = self.engine.take_meter()
+            self.meter.update_levels(left, right, clipped)
+        except Exception:
+            pass
+
     # ---- keyboard and recording ---------------------------------------
 
     def _on_qwerty_change(self):
@@ -543,6 +559,7 @@ class MainWindow(QMainWindow):
         return super().event(event)
 
     def closeEvent(self, event):
+        self._meter_timer.stop()
         self.qwerty.release_all()
         QApplication.instance().removeEventFilter(self.qwerty)
         if self.recorder is not None:
