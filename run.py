@@ -79,22 +79,50 @@ def copy_block_to_output(outdata, block):
         outdata[:, 0] = block.mean(axis=1)
 
 
+LOAD_ALPHA = 0.1
+PEAK_DECAY = 0.97
+
+
 class CallbackState:
-    """Remembers whether the audio callback has already reported an error."""
+    """Audio callback bookkeeping, written by the audio thread, read by the GUI.
+
+    ``load`` is a moving average of callback time / block time, ``peak`` a
+    decaying maximum of the per-callback load, ``underflows`` the number of
+    callbacks PortAudio flagged as output underflows.
+    """
 
     def __init__(self):
         self.reported = False
         self.recorder = None
+        self.load = 0.0
+        self.peak = 0.0
+        self.underflows = 0
+        self.callbacks = 0
 
 
-def render_into(outdata, engine, frames, state):
+def _update_load(state, busy, block_s):
+    now = busy / block_s if block_s > 0.0 else 0.0
+    if state.callbacks == 0:
+        state.load = now
+    else:
+        state.load += LOAD_ALPHA * (now - state.load)
+    state.peak = max(now, state.peak * PEAK_DECAY)
+
+
+def render_into(outdata, engine, frames, state, status=None, clock=time.perf_counter):
     """Render a block into outdata; on any error output silence and report it once."""
+    if getattr(status, "output_underflow", False):
+        state.underflows += 1
     try:
+        start = clock()
         block = engine.render(frames)
         copy_block_to_output(outdata, block)
+        busy = clock() - start
         recorder = state.recorder
         if recorder is not None and recorder.active:
             recorder.push(block)
+        _update_load(state, busy, frames / getattr(engine, "sr", SAMPLE_RATE))
+        state.callbacks += 1
     except Exception as exc:
         outdata.fill(0)
         if not state.reported:
@@ -561,7 +589,7 @@ def open_output_stream(sd, choice, args, samplerate, callback):
 
 def launch_gui(engine, registry, router, store, ports, on_exit=None,
                patch_store=None, patch_defaults=None, recorder=None,
-               initial_patch=None):
+               initial_patch=None, callback_state=None):
     try:
         from midi_synth.gui.app import run_gui
     except ImportError as exc:
@@ -569,7 +597,8 @@ def launch_gui(engine, registry, router, store, ports, on_exit=None,
         return False
     run_gui(engine, registry, router, store, ports, on_exit,
             patch_store=patch_store, patch_defaults=patch_defaults,
-            recorder=recorder, initial_patch=initial_patch)
+            recorder=recorder, initial_patch=initial_patch,
+            callback_state=callback_state)
     return True
 
 
@@ -653,7 +682,7 @@ def main(argv=None):
     cb_state.recorder = recorder
 
     def callback(outdata, frames, time_info, status):
-        render_into(outdata, engine, frames, cb_state)
+        render_into(outdata, engine, frames, cb_state, status=status)
 
     try:
         stream, choice = open_output_stream(sd, choice, args, samplerate, callback)
@@ -678,7 +707,8 @@ def main(argv=None):
         if not args.no_gui and launch_gui(
                 engine, registry, router, store, opened, midi.stop,
                 patch_store=patch_store, patch_defaults=patch_defaults,
-                recorder=recorder, initial_patch=applied_patch or INIT_NAME):
+                recorder=recorder, initial_patch=applied_patch or INIT_NAME,
+                callback_state=cb_state):
             pass
         elif args.no_console:
             while True:

@@ -80,11 +80,15 @@ class _BodyScroll(QScrollArea):
         return widget.sizeHint() + QSize(frame, frame)
 
 
+CPU_WARN_PEAK = 0.8
+
+
 class MainWindow(QMainWindow):
     def __init__(self, engine, registry, router, store, midi_ports, bridge,
                  patch_store=None, patch_defaults=None, recorder=None,
-                 initial_patch=None):
+                 initial_patch=None, callback_state=None):
         super().__init__()
+        self.callback_state = callback_state
         self.setWindowTitle("SnakeOil Synth")
         self.engine = engine
         self.recorder = recorder
@@ -339,12 +343,20 @@ class MainWindow(QMainWindow):
         bar = self.statusBar()
         self.port_label = QLabel("MIDI: " + (", ".join(midi_ports) or "none"))
         self.msg_label = QLabel("Last MIDI: –")
-        self.voice_label = QLabel("Voices: 0")
+        self.voice_label = QLabel("Voices: 0/%d" % self.engine.max_voices)
+        self.cpu_label = None
+        if self.callback_state is not None:
+            self.cpu_label = QLabel("CPU 0%  peak 0%  xruns 0")
+            self.cpu_label.setProperty("level", "ok")
+            self.cpu_label.setToolTip(
+                "Audio callback time as a share of the block time (average, "
+                "recent peak) and buffer underruns")
         self.qwerty_label = QLabel(self.qwerty.status_text())
         self.rec_label = QLabel("")
         for label in (self.port_label, self.msg_label, self.voice_label,
-                      self.qwerty_label, self.rec_label):
-            bar.addPermanentWidget(label)
+                      self.cpu_label, self.qwerty_label, self.rec_label):
+            if label is not None:
+                bar.addPermanentWidget(label)
         app = QApplication.instance()
         app.installEventFilter(self.qwerty)
         app.applicationStateChanged.connect(self._on_app_state_changed)
@@ -622,9 +634,27 @@ class MainWindow(QMainWindow):
 
     def _tick(self):
         self._update_tempo_label()
-        self.voice_label.setText("Voices: %d" % self.engine.active_note_count())
+        self.voice_label.setText(
+            "Voices: %d/%d" % (self.engine.active_note_count(), self.engine.max_voices))
+        self.voice_label.setToolTip(
+            "%d voices stolen so far" % self.engine.steal_count)
+        self._update_cpu_label()
         if self.recorder is not None and self.recorder.active:
             self.rec_label.setText("REC %02d:%02d" % divmod(int(self.recorder.elapsed), 60))
+
+    def _update_cpu_label(self):
+        state = self.callback_state
+        if self.cpu_label is None:
+            return
+        load, peak, xruns = state.load, state.peak, state.underflows
+        self.cpu_label.setText(
+            "CPU %d%%  peak %d%%  xruns %d" % (round(load * 100), round(peak * 100), xruns))
+        level = "bad" if xruns > 0 else "warn" if peak >= CPU_WARN_PEAK else "ok"
+        if self.cpu_label.property("level") != level:
+            self.cpu_label.setProperty("level", level)
+            style = self.cpu_label.style()
+            style.unpolish(self.cpu_label)
+            style.polish(self.cpu_label)
 
     def _meter_tick(self):
         try:

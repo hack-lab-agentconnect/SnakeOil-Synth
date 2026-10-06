@@ -7,6 +7,8 @@ QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; color:
 QFrame#control { border: 1px solid transparent; border-radius: 6px; }
 QFrame#control[learning="true"] { border: 1px solid #ffb74d; background: #2a2620; }
 QLabel#badge { color: #ffb74d; font-size: 10px; }
+QLabel[level="warn"] { color: #ffb74d; }
+QLabel[level="bad"] { color: #ef5350; }
 QPushButton, QComboBox { background: #2c3242; border: 1px solid #3d445a; border-radius: 4px; padding: 3px 8px; }
 QPushButton:hover, QComboBox:hover { background: #343b50; }
 QPushButton:checked { background: #1e88e5; border-color: #42a5f5; }

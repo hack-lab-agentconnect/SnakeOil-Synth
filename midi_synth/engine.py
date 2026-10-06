@@ -85,11 +85,20 @@ from .modmatrix import (
 )
 
 
+def _victim_key(group):
+    """Steal order for a voice group: released and quiet first, then oldest."""
+    oldest = min(v.trigger_order for v in group)
+    if any(v.gate for v in group):
+        return (True, 0.0, oldest)
+    return (False, sum(v.env.level for v in group), oldest)
+
+
 class SynthEngine:
     def __init__(self, sr=SAMPLE_RATE, block_size=BLOCK_SIZE, max_voices=MAX_VOICES):
         self.sr = sr
         self.block_size = block_size
         self.max_voices = max_voices
+        self.steal_count = 0
         self.lock = threading.RLock()
         self._meter_post = np.zeros(2)
         self._meter_clip = False
@@ -810,7 +819,10 @@ class SynthEngine:
         for v in self.voices:
             if not v.active:
                 return v
-        return min(self.voices, key=lambda v: (v.gate, v.trigger_order))
+        released = [v for v in self.voices if not v.gate]
+        if released:
+            return min(released, key=lambda v: (v.env.level, v.trigger_order))
+        return min(self.voices, key=lambda v: v.trigger_order)
 
     def _allocate_group(self, count):
         """Pick ``count`` voices: idle ones first, then whole stolen groups."""
@@ -824,7 +836,7 @@ class SynthEngine:
                 groups.setdefault(key, []).append(v)
         victims = sorted(
             groups.values(),
-            key=lambda g: (any(v.gate for v in g), min(v.trigger_order for v in g)))
+            key=lambda g: _victim_key(g))
         for g in victims:
             chosen.extend(g)
             if len(chosen) >= count:
@@ -841,7 +853,10 @@ class SynthEngine:
         spread_pos = np.linspace(-1.0, 1.0, count)
         gain = 1.0 / np.sqrt(count)
         for v, pos in zip(voices, spread_pos):
+            stolen = v.active
+            self.steal_count += stolen
             v.note_on(note, vel, self._order, glide_from, glide_time,
+                      stolen=stolen,
                       unison_pos=float(pos),
                       detune_cents=float(pos * p["unison_detune"]),
                       pan=float(pos * p["unison_spread"]), gain=float(gain),
@@ -869,8 +884,10 @@ class SynthEngine:
             self._last_freq = midi_note_to_freq(note)
             self._last_note = note
             if count == 1:
+                stolen = voice.active
+                self.steal_count += stolen
                 voice.note_on(note, vel, self._order, glide_from, glide_time,
-                              noise_pos=self._noise_start())
+                              noise_pos=self._noise_start(), stolen=stolen)
             else:
                 self._note_on_unison(note, vel, count, glide_from, glide_time)
 
@@ -1307,4 +1324,5 @@ class SynthEngine:
                 "effects": fx,
                 "sustain": self.sustain,
                 "active_voices": sum(1 for v in self.voices if v.active),
+                "steal_count": self.steal_count,
             }

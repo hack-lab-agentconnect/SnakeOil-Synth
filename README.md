@@ -438,8 +438,8 @@ the sound is bit-identical to before), *Detune* 0-50 cents (default 15) and *Spr
 
 - The stack is drawn from the same 12-voice pool, so the CPU cost is bounded: polyphony
   is `12 // width` notes (width 4 = 3 notes, width 12 = 1 note).
-- When the pool is short, whole groups are stolen: groups that have been released first,
-  then the oldest. A note never ends up with only some of its voices, except when the width is reduced to 1 while grouped notes are sounding.
+- When the pool is short, whole groups are stolen: quietest released groups first,
+  then the oldest held one. A note never ends up with only some of its voices, except when the width is reduced to 1 while grouped notes are sounding.
 - Voice `i` of `N` is detuned by `linspace(-1, 1, N)[i] * Detune` cents and panned by
   `linspace(-1, 1, N)[i] * Spread` (balance law, centre voices untouched). Each voice is
   scaled by `1/sqrt(N)` so loudness stays about the same as the width grows.
@@ -448,6 +448,37 @@ the sound is bit-identical to before), *Detune* 0-50 cents (default 15) and *Spr
 - With any panned voice the mix is stereo; with the master-bus filter on, the left and
   right channels use two filters with the same settings. Note off, sustain pedal, all
   notes off and panic act on the whole stack.
+
+## Polyphony, voice stealing and headroom
+
+- The synth has 12 voices. Unison uses `width` voices per note, so it divides the
+  polyphony: width 2 gives 6 notes, width 4 gives 3.
+- A released note keeps its voice until its release ends, so a long amp release
+  uses voices after you let go.
+- When every voice is busy, a new note steals one. Idle voices are always used first.
+  Then the quietest releasing voice is stolen (lowest envelope level; with unison, the
+  released group with the lowest summed level; ties go to the oldest). Only if every
+  voice is held is the oldest held note stolen.
+- A stolen voice is retriggered in place. It keeps its oscillator phases, filter state,
+  noise position and envelope level, and the attack starts from the current level, so
+  there is no click at the steal. Voices that were idle start from zero as before.
+- The footer shows `Voices: 10/12` (sounding voices / limit). Its tooltip gives the
+  number of voices stolen so far.
+- The footer `CPU 31%  peak 58%  xruns 0` label is the audio callback time (render
+  and copy) divided by the block time. *CPU* is a moving average, *peak* is the
+  highest recent load (a maximum that decays over about a second), and *xruns* counts
+  callbacks that PortAudio reported as output underflows (audible dropouts). The label
+  turns orange when the peak reaches 80% and red after any xrun.
+
+Measured on the development machine (44.1 kHz, 256-sample blocks, budget 5.8 ms), with
+a heavy patch: unison 2, osc 2 on, 24 dB filter, all four effects, limiter, every
+voice busy. The numbers vary by machine.
+
+| Voices | Mean load | Worst block |
+|-------:|----------:|------------:|
+| 12     | 46%       | 70%         |
+| 16     | 57%       | 97%         |
+| 24     | 80%       | 110%        |
 
 ## Tempo, MIDI clock and synced delay
 

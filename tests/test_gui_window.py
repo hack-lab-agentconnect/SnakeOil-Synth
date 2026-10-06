@@ -368,3 +368,58 @@ def test_close_stops_meter_timer(rig):
 
 def test_window_title_is_snakeoil_synth(rig):
     assert rig[4].windowTitle() == "SnakeOil Synth"
+
+
+class FakeCallbackState:
+    def __init__(self, load=0.5, peak=0.7, underflows=0):
+        self.load, self.peak, self.underflows = load, peak, underflows
+        self.callbacks = 1
+
+
+def _window_with_state(tmp_path, state, voices=2):
+    engine = SynthEngine(sr=44100, block_size=64, max_voices=voices)
+    registry = build_registry(engine)
+    store = ProfileStore(tmp_path / "cfg")
+    router = MidiRouter(registry, store.open_active())
+    bridge = Bridge(registry, router)
+    window = MainWindow(engine, registry, router, store, ["P"], bridge,
+                        callback_state=state)
+    return engine, window
+
+
+def test_no_callback_state_means_no_cpu_label(rig):
+    window = rig[-1]
+    assert window.cpu_label is None
+
+
+def test_cpu_label_text_and_ok_level(qapp, tmp_path):
+    _, w = _window_with_state(tmp_path, FakeCallbackState(0.5, 0.7, 0))
+    w._tick()
+    assert w.cpu_label.text() == "CPU 50%  peak 70%  xruns 0"
+    assert w.cpu_label.property("level") == "ok"
+
+
+def test_cpu_label_warn_and_bad_levels(qapp, tmp_path):
+    state = FakeCallbackState(0.5, 0.79)
+    _, w = _window_with_state(tmp_path, state)
+    w._tick()
+    assert w.cpu_label.property("level") == "ok"
+    state.peak = 0.8
+    w._tick()
+    assert w.cpu_label.property("level") == "warn"
+    state.underflows = 2
+    w._tick()
+    assert w.cpu_label.property("level") == "bad"
+    assert w.cpu_label.text().endswith("xruns 2")
+
+
+def test_voices_label_shows_count_over_limit_and_steal_tooltip(qapp, tmp_path):
+    engine, w = _window_with_state(tmp_path, None, voices=2)
+    engine.note_on(60, 100)
+    engine.note_on(62, 100)
+    w._tick()
+    assert w.voice_label.text() == "Voices: 2/2"
+    assert w.voice_label.toolTip() == "0 voices stolen so far"
+    engine.note_on(64, 100)
+    w._tick()
+    assert w.voice_label.toolTip() == "1 voices stolen so far"

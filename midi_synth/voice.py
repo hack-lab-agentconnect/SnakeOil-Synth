@@ -25,9 +25,9 @@ class Envelope:
         self.sustain = min(max(sustain, 0.0), 1.0)
         self.release = max(release, 1.0 / self.sr)
 
-    def note_on(self):
+    def note_on(self, keep_level=False):
         self.stage = ATTACK
-        if self.level >= 1.0:
+        if self.level >= 1.0 and not keep_level:
             self.level = 0.0
 
     def note_off(self):
@@ -131,7 +131,11 @@ class Voice:
 
     def note_on(self, note, velocity, order, glide_from=None, glide_time=0.0,
                 detune_cents=0.0, pan=0.0, gain=1.0, group=None,
-                random_phase=False, rng=None, unison_pos=0.0, noise_pos=0):
+                random_phase=False, rng=None, unison_pos=0.0, noise_pos=0,
+                stolen=False):
+        """Start a note. ``stolen`` retriggers a still-sounding voice without
+        resetting phases, filter, noise position or envelope level, so the
+        output stays continuous (no pop)."""
         self.note = note
         self.gate = True
         self.freq = midi_note_to_freq(note)
@@ -149,6 +153,11 @@ class Voice:
         self.gain = gain
         self.group = group
         self.unison_pos = unison_pos
+        if stolen:
+            self.env.note_on(keep_level=True)
+            self.flt_env.level = 0.0
+            self.flt_env.note_on()
+            return
         self.noise_pos = noise_pos
         if random_phase:
             self.osc1.phase = rng.random()

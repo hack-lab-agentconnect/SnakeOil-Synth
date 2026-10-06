@@ -11,14 +11,15 @@ from .style import STYLE
 
 def run_gui(engine, registry, router, store, midi_ports, on_exit=None,
             patch_store=None, patch_defaults=None, recorder=None,
-            initial_patch=None):
+            initial_patch=None, callback_state=None):
     app = QApplication.instance() or QApplication(sys.argv[:1])
     app.setApplicationName("SnakeOil Synth")
     app.setStyleSheet(STYLE)
     bridge = Bridge(registry, router)
     window = MainWindow(engine, registry, router, store, midi_ports, bridge,
                         patch_store=patch_store, patch_defaults=patch_defaults,
-                        recorder=recorder, initial_patch=initial_patch)
+                        recorder=recorder, initial_patch=initial_patch,
+                        callback_state=callback_state)
     window.show()
     signal.signal(signal.SIGINT, lambda *_: app.quit())
     pump = QTimer()
