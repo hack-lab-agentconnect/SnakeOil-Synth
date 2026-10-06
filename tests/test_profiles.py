@@ -156,3 +156,103 @@ def test_open_active_warns_when_preferred_missing(store):
 def test_names_ignores_tmp_and_saves_leave_no_tmp(store):
     store.save(default_profile())
     assert not list(store.profiles_dir.glob("*.tmp"))
+
+
+# ---- config dir rename / legacy migration -------------------------------
+
+def _fake_home(monkeypatch, tmp_path):
+    import sys
+    monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
+    base = tmp_path / ("appdata" if sys.platform == "win32" else "xdg")
+    return base
+
+
+def _make_legacy(legacy):
+    (legacy / "profiles").mkdir(parents=True)
+    (legacy / "patches").mkdir()
+    (legacy / "profiles" / "mine.json").write_text('{"a": 1}')
+    (legacy / "patches" / "lead.json").write_text('{"b": 2}')
+    (legacy / "settings.json").write_text('{"active": "mine"}')
+
+
+def test_default_config_dir_name_is_snakeoil_synth(monkeypatch, tmp_path):
+    from midi_synth.profiles import default_config_dir
+    base = _fake_home(monkeypatch, tmp_path)
+    assert default_config_dir() == base / "snakeoil-synth"
+
+
+def test_migration_copies_everything_and_keeps_legacy(tmp_path):
+    from midi_synth.profiles import migrate_legacy_config
+    legacy, new = tmp_path / "midi-synth", tmp_path / "snakeoil-synth"
+    _make_legacy(legacy)
+    msg = migrate_legacy_config(new, legacy)
+    assert msg and "untouched" in msg
+    assert (new / "profiles" / "mine.json").read_text() == '{"a": 1}'
+    assert (new / "patches" / "lead.json").read_text() == '{"b": 2}'
+    assert (new / "settings.json").read_text() == '{"active": "mine"}'
+    assert (legacy / "profiles" / "mine.json").exists()
+    assert (legacy / "settings.json").exists()
+
+
+def test_migration_default_legacy_is_sibling_midi_synth(tmp_path):
+    from midi_synth.profiles import migrate_legacy_config
+    _make_legacy(tmp_path / "midi-synth")
+    assert migrate_legacy_config(tmp_path / "snakeoil-synth")
+    assert (tmp_path / "snakeoil-synth" / "settings.json").exists()
+
+
+def test_migration_runs_into_empty_existing_dir(tmp_path):
+    from midi_synth.profiles import migrate_legacy_config
+    legacy, new = tmp_path / "midi-synth", tmp_path / "snakeoil-synth"
+    _make_legacy(legacy)
+    new.mkdir()
+    assert migrate_legacy_config(new, legacy)
+    assert (new / "settings.json").exists()
+
+
+def test_migration_noop_when_new_dir_has_content(tmp_path):
+    from midi_synth.profiles import migrate_legacy_config
+    legacy, new = tmp_path / "midi-synth", tmp_path / "snakeoil-synth"
+    _make_legacy(legacy)
+    new.mkdir()
+    (new / "settings.json").write_text("{}")
+    assert migrate_legacy_config(new, legacy) is None
+    assert not (new / "profiles").exists()
+    assert (new / "settings.json").read_text() == "{}"
+
+
+def test_migration_noop_without_legacy_dir(tmp_path):
+    from midi_synth.profiles import migrate_legacy_config
+    new = tmp_path / "snakeoil-synth"
+    assert migrate_legacy_config(new, tmp_path / "midi-synth") is None
+    assert not new.exists()
+
+
+def test_migration_oserror_returns_warning(monkeypatch, tmp_path):
+    import shutil
+    from midi_synth.profiles import migrate_legacy_config
+    legacy, new = tmp_path / "midi-synth", tmp_path / "snakeoil-synth"
+    _make_legacy(legacy)
+
+    def boom(*a, **k):
+        raise OSError("disk full")
+    monkeypatch.setattr(shutil, "copytree", boom)
+    msg = migrate_legacy_config(new, legacy)
+    assert msg.startswith("warning:") and "disk full" in msg
+    assert (legacy / "settings.json").exists()
+
+
+def test_resolve_config_dir_migrates_only_for_default(monkeypatch, tmp_path):
+    import run
+    base = _fake_home(monkeypatch, tmp_path)
+    _make_legacy(base / "midi-synth")
+    custom = tmp_path / "custom"
+    assert run.resolve_config_dir(str(custom)) == (custom, None)
+    assert not custom.exists()
+    assert not (base / "snakeoil-synth").exists()
+    path, msg = run.resolve_config_dir(None)
+    assert path == base / "snakeoil-synth" and msg
+    assert (path / "settings.json").exists()

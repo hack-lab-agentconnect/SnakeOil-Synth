@@ -50,7 +50,8 @@ def render(engine, path, seconds, notes, release_tail=0.4):
 
 
 def parse_args(argv):
-    p = argparse.ArgumentParser(description="Offline render of the MIDI synth to a WAV file")
+    p = argparse.ArgumentParser(prog="snakeoil-synth-render",
+                                description="Offline render of SnakeOil Synth to a WAV file")
     p.add_argument("--out", default="demo.wav")
     p.add_argument("--seconds", type=float, default=3.0)
     p.add_argument("--samplerate", type=int, default=SAMPLE_RATE)

@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -18,12 +19,38 @@ _RESERVED = {"CON", "PRN", "AUX", "NUL"} | {"COM%d" % i for i in range(1, 10)} |
 }
 
 
+# Folder name before the rename to SnakeOil Synth; its contents are copied once.
+LEGACY_DIR_NAME = "midi-synth"
+DEFAULT_DIR_NAME = "snakeoil-synth"
+
+
 def default_config_dir():
     if sys.platform == "win32":
         base = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
     else:
         base = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
-    return Path(base) / "midi-synth"
+    return Path(base) / DEFAULT_DIR_NAME
+
+
+def migrate_legacy_config(new_dir, legacy_dir=None):
+    """Copy the legacy config folder to `new_dir` once; never touches the legacy folder.
+
+    Returns a message describing what happened, or None when nothing was needed.
+    OSErrors are returned as a warning message instead of being raised.
+    """
+    new_dir = Path(new_dir)
+    legacy_dir = Path(legacy_dir) if legacy_dir is not None else new_dir.parent / LEGACY_DIR_NAME
+    try:
+        if not legacy_dir.is_dir():
+            return None
+        if new_dir.exists() and any(new_dir.iterdir()):
+            return None
+        shutil.copytree(legacy_dir, new_dir, dirs_exist_ok=True)
+    except OSError as exc:
+        return "warning: could not copy old settings from %s to %s: %s" % (
+            legacy_dir, new_dir, exc)
+    return "Copied your old settings from %s to %s (the old folder was left untouched)" % (
+        legacy_dir, new_dir)
 
 
 def validate_name(name):

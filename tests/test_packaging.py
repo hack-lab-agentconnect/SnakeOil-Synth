@@ -27,14 +27,14 @@ def _requirements():
 
 def test_project_metadata():
     data = _pyproject()
-    assert data["project"]["name"] == "midi-synth"
+    assert data["project"]["name"] == "snakeoil-synth"
     assert data["project"]["requires-python"] == ">=3.10"
 
 
 def test_console_scripts():
     scripts = _pyproject()["project"]["scripts"]
-    assert scripts["midi-synth"] == "run:main"
-    assert scripts["midi-synth-render"] == "render_demo:main"
+    assert scripts["snakeoil-synth"] == "run:main"
+    assert scripts["snakeoil-synth-render"] == "render_demo:main"
 
 
 def test_listed_modules_and_packages_exist():
@@ -55,3 +55,15 @@ def test_dependencies_match_requirements_txt():
 def test_entry_points_are_callable():
     for modname in ("run", "render_demo"):
         assert callable(importlib.import_module(modname).main)
+
+
+def test_help_texts_use_new_name(capsys):
+    import run
+    import pytest as _pytest
+    with _pytest.raises(SystemExit):
+        run.parse_args(["--help"])
+    out = capsys.readouterr().out
+    assert out.startswith("usage: snakeoil-synth")
+    assert "SnakeOil Synth" in out
+    src = (ROOT / "render_demo.py").read_text()
+    assert 'prog="snakeoil-synth-render"' in src and "SnakeOil Synth" in src

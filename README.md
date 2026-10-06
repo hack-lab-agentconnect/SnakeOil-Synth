@@ -1,8 +1,8 @@
-# midi-synth
+# SnakeOil Synth
 
-Python MIDI synth. Built by Jilly @ Hackers In The Loop
+A Python synth for MIDI keyboards. Built by Jilly @ Hackers In The Loop
 
-A real-time Python MIDI synthesizer. It listens to **any** MIDI input device, plays
+SnakeOil Synth is a real-time Python MIDI synthesizer. It listens to **any** MIDI input device, plays
 the notes it receives, and runs them through a dual-oscillator voice engine plus a
 toggleable effects chain.
 
@@ -65,6 +65,13 @@ Feedback (0.35), Tone (0.25), Size (0.84) and Damping (0.25) default to the valu
 effects had before these dials existed. The effect dials have no default MIDI CC; use MIDI
 Learn to bind them. They are saved in patches.
 
+## Renamed
+
+SnakeOil Synth was formerly called midi-synth. The config folder moved to `snakeoil-synth`;
+on first run your old data (profiles, patches, settings) is copied there automatically and
+the legacy `midi-synth` folder is left untouched. The console commands are now
+`snakeoil-synth` and `snakeoil-synth-render`. The Python package is still `midi_synth`.
+
 ## Install
 
 ```bash
@@ -81,8 +88,8 @@ pip install .            # installs the package and its dependencies
 pip install -e .[dev]    # editable install plus pytest, for development
 ```
 
-This provides two console scripts, `midi-synth` (same as `python run.py`) and
-`midi-synth-render` (same as `python render_demo.py`).
+This provides two console scripts, `snakeoil-synth` (same as `python run.py`) and
+`snakeoil-synth-render` (same as `python render_demo.py`).
 
 A GitHub Actions workflow (`.github/workflows/ci.yml`) runs the test suite on
 Windows and Ubuntu with Python 3.12 for pushes to `main` and for pull requests.
@@ -120,8 +127,8 @@ The window opens by default; use `--no-gui` for the console only.
   Right-click -> *Clear binding* removes it.
 - **Profiles:** the toolbar has New, Duplicate, Rename, Delete and Reset. Bindings
   autosave to the active profile.
-- **Files:** profiles are `*.json` files in `%APPDATA%\midi-synth\profiles\` on Windows
-  (`~/.config/midi-synth/profiles/` elsewhere). Copy the files to share them.
+- **Files:** profiles are `*.json` files in `%APPDATA%\snakeoil-synth\profiles\` on Windows
+  (`~/.config/snakeoil-synth/profiles/` elsewhere). Copy the files to share them.
 - `--profile NAME` starts with a given profile; `--config-dir PATH` uses another
   config directory.
 
@@ -145,7 +152,7 @@ window loses focus or the button is switched off.
 ## Recording
 
 The **Rec** toolbar button records the synth output to a 16-bit stereo WAV file (at the
-engine's sample rate) in `recordings/synth-YYYYmmdd-HHMMSS.wav` inside the config directory
+engine's sample rate) in `recordings/snakeoil-YYYYmmdd-HHMMSS.wav` inside the config directory
 (next to `profiles/` and `patches/`). The status bar shows the file path and the elapsed
 time while recording, and "Saved <path>" when you stop. Recording runs on a background
 thread; if the disk cannot keep up, blocks are dropped rather than glitching the audio.

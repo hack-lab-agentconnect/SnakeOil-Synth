@@ -364,3 +364,7 @@ def test_close_stops_meter_timer(rig):
     assert window._meter_timer.isActive()
     window.close()
     assert not window._meter_timer.isActive()
+
+
+def test_window_title_is_snakeoil_synth(rig):
+    assert rig[4].windowTitle() == "SnakeOil Synth"

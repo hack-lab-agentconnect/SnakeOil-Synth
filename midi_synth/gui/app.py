@@ -13,6 +13,7 @@ def run_gui(engine, registry, router, store, midi_ports, on_exit=None,
             patch_store=None, patch_defaults=None, recorder=None,
             initial_patch=None):
     app = QApplication.instance() or QApplication(sys.argv[:1])
+    app.setApplicationName("SnakeOil Synth")
     app.setStyleSheet(STYLE)
     bridge = Bridge(registry, router)
     window = MainWindow(engine, registry, router, store, midi_ports, bridge,

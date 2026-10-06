@@ -82,7 +82,7 @@ class MainWindow(QMainWindow):
                  patch_store=None, patch_defaults=None, recorder=None,
                  initial_patch=None):
         super().__init__()
-        self.setWindowTitle("MIDI Synth")
+        self.setWindowTitle("SnakeOil Synth")
         self.engine = engine
         self.recorder = recorder
         self.rec_btn = None

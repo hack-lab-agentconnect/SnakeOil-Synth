@@ -15,14 +15,24 @@ from midi_synth.modmatrix import NUM_SLOTS, parse_mod_args
 from midi_synth.midi_router import MidiRouter
 from midi_synth.params import build_registry
 from midi_synth.patches import INIT_NAME, PatchError, PatchStore, apply as apply_patch, capture
-from midi_synth.profiles import ProfileStore, default_config_dir
+from midi_synth.profiles import (
+    ProfileStore, default_config_dir, migrate_legacy_config,
+)
 from midi_synth.recorder import Recorder, recording_path
+
+
+def resolve_config_dir(config_dir_arg):
+    """Return (config dir, migration message). Migrates only for the default dir."""
+    if config_dir_arg:
+        return Path(config_dir_arg), None
+    config_dir = default_config_dir()
+    return config_dir, migrate_legacy_config(config_dir)
 
 
 def parse_args(argv):
     p = argparse.ArgumentParser(
-        prog="midi-synth",
-        description="Real-time MIDI synth with dual oscillators and effects.",
+        prog="snakeoil-synth",
+        description="SnakeOil Synth: a real-time synthesizer with dual oscillators and effects.",
     )
     p.add_argument("--list", action="store_true", help="list MIDI and audio devices and exit")
     p.add_argument("--input", action="append", metavar="NAME",
@@ -589,7 +599,10 @@ def main(argv=None):
                          max_voices=args.voices)
     engine.set_lpf_mode(args.lpf_mode)
 
-    store = ProfileStore(Path(args.config_dir) if args.config_dir else default_config_dir())
+    config_dir, migration_message = resolve_config_dir(args.config_dir)
+    if migration_message:
+        print(migration_message)
+    store = ProfileStore(config_dir)
     try:
         profile = store.open_active(args.profile)
         saving = True

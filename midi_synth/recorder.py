@@ -11,13 +11,13 @@ STOP_TIMEOUT = 5.0
 
 
 def recording_path(directory, now=None):
-    """Return a fresh `<directory>/recordings/synth-YYYYmmdd-HHMMSS.wav`.
+    """Return a fresh `<directory>/recordings/snakeoil-YYYYmmdd-HHMMSS.wav`.
 
     Creates the recordings folder; adds -1, -2, ... if the name is taken.
     """
     folder = Path(directory) / "recordings"
     folder.mkdir(parents=True, exist_ok=True)
-    stamp = (now or datetime.datetime.now()).strftime("synth-%Y%m%d-%H%M%S")
+    stamp = (now or datetime.datetime.now()).strftime("snakeoil-%Y%m%d-%H%M%S")
     path = folder / (stamp + ".wav")
     n = 0
     while path.exists():

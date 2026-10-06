@@ -88,11 +88,11 @@ def test_recording_path_format_and_uniqueness(tmp_path):
 
     now = datetime.datetime(2026, 10, 5, 14, 3, 9)
     p = recording_path(tmp_path, now)
-    assert p == tmp_path / "recordings" / "synth-20261005-140309.wav"
+    assert p == tmp_path / "recordings" / "snakeoil-20261005-140309.wav"
     assert p.parent.is_dir()
     p.write_bytes(b"x")
     assert recording_path(tmp_path, now) == (
-        tmp_path / "recordings" / "synth-20261005-140309-1.wav")
+        tmp_path / "recordings" / "snakeoil-20261005-140309-1.wav")
 
 
 # ---- console ------------------------------------------------------------
@@ -189,7 +189,7 @@ def test_rec_toggle_creates_and_finalises_file(qapp, tmp_path):
     assert rec.active
     path = Path(rec.path)
     assert path.parent == tmp_path / "cfg" / "recordings"
-    assert path.name.startswith("synth-") and path.suffix == ".wav"
+    assert path.name.startswith("snakeoil-") and path.suffix == ".wav"
     assert str(path) in window.statusBar().currentMessage()
     rec.push(np.zeros((48000, 2), dtype=np.float32))
     import time
