@@ -215,7 +215,8 @@ def _fit(window, width=1500, height=900):
 
 def test_window_size_hint_fits_a_small_screen(rig):
     hint = rig[-1].sizeHint()
-    assert hint.width() <= 1700 and hint.height() <= 900
+    from tests.gui_limits import MAX_HINT_HEIGHT, MAX_HINT_WIDTH
+    assert hint.width() <= MAX_HINT_WIDTH and hint.height() <= MAX_HINT_HEIGHT
 
 
 def test_body_is_inside_a_scroll_area(rig):

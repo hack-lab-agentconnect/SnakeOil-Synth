@@ -129,4 +129,5 @@ def test_tail_label_warns_when_full(qapp, tmp_path):
 def test_size_hint_still_fits(qapp, tmp_path):
     _, w = hybrid(tmp_path)
     hint = w.centralWidget().sizeHint()
-    assert hint.width() <= 1700 and hint.height() <= 900
+    from tests.gui_limits import MAX_HINT_HEIGHT, MAX_HINT_WIDTH
+    assert hint.width() <= MAX_HINT_WIDTH and hint.height() <= MAX_HINT_HEIGHT

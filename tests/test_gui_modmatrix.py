@@ -300,7 +300,8 @@ def test_matrix_box_neighbours_not_stretched(rig):
     QApplication.processEvents()
     boxes = {b.title(): b for b in window.findChildren(QGroupBox)}
     assert boxes["Mod Matrix"].geometry().top() == boxes["Filter"].geometry().top()
-    assert boxes["Mod Matrix"].height() <= 380
+    from tests.gui_limits import MAX_MATRIX_BOX_HEIGHT
+    assert boxes["Mod Matrix"].height() <= MAX_MATRIX_BOX_HEIGHT
 
 
 def test_window_slider_and_combos_reach_engine(rig):
@@ -365,8 +366,9 @@ def test_patch_apply_refreshes_matrix(rig):
 def test_size_hint_and_no_overlap(rig):
     *_, window = rig
     hint = window.sizeHint()
-    assert hint.width() <= 1700
-    assert window.centralWidget().sizeHint().height() <= 900
+    from tests.gui_limits import MAX_CENTRAL_HEIGHT, MAX_HINT_WIDTH
+    assert hint.width() <= MAX_HINT_WIDTH
+    assert window.centralWidget().sizeHint().height() <= MAX_CENTRAL_HEIGHT
     window.resize(1700, 1000)
     window.show()
     QApplication.processEvents()

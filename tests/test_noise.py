@@ -484,7 +484,8 @@ def test_gui_noise_group_and_layout():
         assert "Noise" in GROUP_POSITIONS
         assert "noise_level" in window.controls and "noise_color" in window.controls
         hint = window.sizeHint()
-        assert hint.width() <= 1700 and hint.height() <= 900
+        from tests.gui_limits import MAX_HINT_HEIGHT, MAX_HINT_WIDTH
+        assert hint.width() <= MAX_HINT_WIDTH and hint.height() <= MAX_HINT_HEIGHT
         window.resize(1700, 1000)
         window.show()
         QApplication.processEvents()

@@ -30,7 +30,8 @@ def test_slope_combo_defaults_to_12_and_reaches_engine(rig):
 def test_filter_group_layout_is_coherent_and_window_fits(rig):
     *_, window = rig
     hint = window.sizeHint()
-    assert hint.width() <= 1700 and hint.height() <= 900
+    from tests.gui_limits import MAX_HINT_HEIGHT, MAX_HINT_WIDTH
+    assert hint.width() <= MAX_HINT_WIDTH and hint.height() <= MAX_HINT_HEIGHT
     _fit(window, 1700, 1000)
     QApplication.processEvents()
     box = next(b for b in window.findChildren(QGroupBox) if b.title() == "Filter")

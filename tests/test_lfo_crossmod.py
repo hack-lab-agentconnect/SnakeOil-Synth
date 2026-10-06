@@ -277,4 +277,5 @@ def test_matrix_cell_is_its_own_and_hint_fits(window):
             continue
         assert not (rr < r + rs and r < rr + rrs and cc < c + cs and c < cc + ccs)
     hint = window.sizeHint()
-    assert hint.width() <= 1700 and hint.height() <= 900
+    from tests.gui_limits import MAX_HINT_HEIGHT, MAX_HINT_WIDTH
+    assert hint.width() <= MAX_HINT_WIDTH and hint.height() <= MAX_HINT_HEIGHT
