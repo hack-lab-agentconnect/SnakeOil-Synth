@@ -150,7 +150,7 @@ HELP_TEXT = """commands:
   velocity <on|off>          off = every note plays at one fixed velocity
   fltenv <-1..1>             filter envelope amount (per-voice filter)
   lfo <rate> <depth> [wave] [dest]  LFO: 0.05-20 Hz, depth 0-1 (0 = off),
-                             wave sine|triangle|saw|square|random,
+                             wave sine|triangle|saw|square|random|random-glide,
                              dest pitch|filter|pwm|amp
   lfo2 <rate> <depth> [wave] [dest]  second LFO, same arguments (default dest filter)
   glide <seconds>            slide between notes, 0-2 s (0 = off)

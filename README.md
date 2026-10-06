@@ -25,7 +25,7 @@ toggleable effects chain.
   bypass), per voice or on the master bus, with a **filter envelope** (ADSR + amount),
   **key tracking** and **velocity-to-cutoff**.
 - **Amp envelope** (ADSR) per voice.
-- Two **LFOs** (sine, triangle, saw, square, random) to pitch, filter, pulse width or volume,
+- Two **LFOs** (sine, triangle, saw, square, random, random-glide) to pitch, filter, pulse width or volume,
   and **glide** (portamento, optionally legato only).
 - **Unison:** up to 12 stacked voices per note with detune and stereo spread.
 - **Stereo effects chain:** chorus, delay (with **ping-pong**, feedback, tone and
@@ -221,7 +221,8 @@ per-voice filter only; with *Master-bus filter* on they are ignored. A cutoff pu
 - **LFO 1 and LFO 2** (*LFO 1* and *LFO 2* groups): two global low-frequency oscillators
   shared by all voices, with identical controls. Each has its own
   *Rate* 0.05-20 Hz, *Depth* 0-1 (default 0 = off, the LFO does no work at all),
-  *Wave* sine, triangle, saw, square or random (sample and hold, one new value per cycle),
+  *Wave* sine, triangle, saw, square, random (sample and hold, one new value per cycle) or random-glide
+  (one new random target per cycle, reached with a smooth cosine glide),
   *Dest* pitch, filter, pwm or amp. At full depth the destinations move: pitch by up to
   +/-2 semitones, filter cutoff by +/-3 octaves, pulse width of both oscillators by
   +/-0.25 (clamped to 0-0.5), and volume as tremolo from full level down to silence.
@@ -347,7 +348,7 @@ An interactive console starts alongside the audio. Type `help`. Commands:
 | `adsr <a> <d> <s> <r>` | amp envelope: attack, decay in s (0.001-5), sustain 0-1, release in s (0.001-10) |
 | `velocity <on\|off>` | off = every note plays at one fixed velocity |
 | `fltenv <-1..1>` | filter envelope amount (per-voice filter; default 0) |
-| `lfo <rate> <depth> [wave] [dest]` | LFO 1: 0.05-20 Hz, depth 0-1 (0 = off); wave sine\|triangle\|saw\|square\|random; dest pitch\|filter\|pwm\|amp |
+| `lfo <rate> <depth> [wave] [dest]` | LFO 1: 0.05-20 Hz, depth 0-1 (0 = off); wave sine\|triangle\|saw\|square\|random\|random-glide; dest pitch\|filter\|pwm\|amp |
 | `lfo2 <rate> <depth> [wave] [dest]` | LFO 2, same arguments (default dest filter) |
 | `glide <seconds>` | slide between notes, 0-2 s (0 = off) |
 | `unison <1-12> [detune_cents] [spread]` | stack voices per note (polyphony = 12 // width); detune 0-50 cents, spread 0-1 |

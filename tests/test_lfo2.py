@@ -58,7 +58,7 @@ def test_registry():
     assert reg["lfo2_depth"].kind == CONTINUOUS
     assert (reg["lfo2_depth"].minimum, reg["lfo2_depth"].maximum) == (0.0, 1.0)
     assert reg["lfo2_wave"].kind == CHOICE
-    assert reg["lfo2_wave"].choices == ("sine", "triangle", "saw", "square", "random")
+    assert reg["lfo2_wave"].choices == ("sine", "triangle", "saw", "square", "random", "random-glide")
     assert reg["lfo2_dest"].choices == DESTS
     assert (reg.get("lfo2_rate"), reg.get("lfo2_depth"), reg.get("lfo2_wave"),
             reg.get("lfo2_dest")) == (5.0, 0.0, "sine", "filter")

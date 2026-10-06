@@ -10,7 +10,7 @@ from midi_synth.patches import apply, capture
 from midi_synth.voice import Voice
 
 SR, BLOCK = 44100, 256
-WAVES = ("sine", "triangle", "saw", "square", "random")
+WAVES = ("sine", "triangle", "saw", "square", "random", "random-glide")
 DESTS = ("pitch", "filter", "pwm", "amp")
 
 
