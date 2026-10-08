@@ -12,6 +12,7 @@
 #include "snakeoil/effects.hpp"
 #include "snakeoil/limiter.hpp"
 #include "snakeoil/lfo.hpp"
+#include "snakeoil/mod_matrix.hpp"
 #include "snakeoil/voice.hpp"
 
 namespace snakeoil {
@@ -72,6 +73,7 @@ public:
         }
         lastFreq_ = midiNoteToFreq(note);
         hasLastFreq_ = true;
+        lastNote_ = note;
         Voice& voice = allocate();
         voice.noteOn(note, vel, order_, voice.active(), glideFrom, glideTime);
     }
@@ -160,6 +162,8 @@ public:
             }
             runLfo(n);
         }
+        params_.mod_filter = false;
+        applyMod();
         std::fill(mix_.begin(), mix_.begin() + n, 0.0);
         for (auto& v : voices_) {
             if (v.active()) {
@@ -289,6 +293,113 @@ private:
             autoLimiter_ = autoL;
         }
         syncEffects();
+        syncMod();
+    }
+
+    double value(const std::string& id, double fallback = 0.0) const {
+        auto it = values_.find(id);
+        return it == values_.end() ? fallback : it->second;
+    }
+
+    void syncMod() {
+        modRows_.clear();
+        modLfo_[0] = modLfo_[1] = false;
+        bool wheel = false;
+        bool at = false;
+        for (int slot = 1; slot <= 8; ++slot) {
+            const std::string key = "mod" + std::to_string(slot);
+            const std::string src = choice(key + "_src", "none");
+            const std::string dst = choice(key + "_dst", "none");
+            const double amt = value(key + "_amt", 0.0);
+            if (src == "none" || dst == "none" || amt == 0.0) {
+                continue;
+            }
+            const int si = sourceIndex(src);
+            if (si == kSrcLfo1) modLfo_[0] = true;
+            if (si == kSrcLfo2) modLfo_[1] = true;
+            if (si == kSrcWheel) wheel = true;
+            if (si == kSrcAftertouch) at = true;
+            modRows_.push_back({si, amt, dst});
+        }
+        if (wheel && !wheelUsed_) {
+            wheelS_ = modWheel_;
+        }
+        if (at && !atUsed_) {
+            atS_ = aftertouch_;
+        }
+        wheelUsed_ = wheel;
+        atUsed_ = at;
+    }
+
+    void applyMod() {
+        if (modRows_.empty()) {
+            return;
+        }
+        if (wheelUsed_) {
+            wheelS_ = smoothStep(wheelS_, modWheel_);
+        }
+        if (atUsed_) {
+            atS_ = smoothStep(atS_, aftertouch_);
+        }
+        const double src[6] = {0.0, 0.0, lfoLast_[0], lfoLast_[1], wheelS_, atS_};
+        int destCount = 0;
+        const ModDest* dests = modDestinations(destCount);
+        for (const auto& row : modRows_) {
+            const ModDest* dest = nullptr;
+            for (int i = 0; i < destCount; ++i) {
+                if (row.dst == dests[i].name) {
+                    dest = &dests[i];
+                    break;
+                }
+            }
+            if (dest == nullptr) {
+                continue;
+            }
+            const double base = value(dest->paramId, 0.0);
+            const double eff = effective(base, row.amt * src[row.src], dest->lo, dest->hi);
+            applyModDest(*dest, eff);
+        }
+    }
+
+    void applyModDest(const ModDest& d, double eff) {
+        const std::string id = d.paramId;
+        if (d.fx) {
+            if (id == "fx_chorus_depth") effects_.chorus().setDepth(eff);
+            else if (id == "fx_delay_time") effects_.delay().setTimeMs(eff);
+            else if (id == "fx_delay_feedback") effects_.delay().setFeedback(eff);
+            else if (id == "fx_delay_damp") effects_.delay().setDamp(eff);
+            else if (id == "fx_reverb_amount") effects_.reverb().setAmount(eff);
+            else if (id == "fx_reverb_size") effects_.reverb().setRoom(eff);
+            else if (id == "fx_reverb_damp") effects_.reverb().setDamp(eff);
+            else if (id == "fx_bitcrush_amount") effects_.bitcrush().setAmount(eff);
+            return;
+        }
+        if (id == "lpf_cutoff") { params_.lpf_cutoff = eff; params_.mod_filter = true; }
+        else if (id == "lpf_resonance") { params_.lpf_resonance = eff; params_.mod_filter = true; }
+        else if (id == "fm_depth") { params_.fm_depth = eff; params_.mod_index = eff * kFmIndexMax; }
+        else if (id == "osc1_level") params_.osc1_level = eff;
+        else if (id == "osc1_pwm") params_.osc1_pwm = eff;
+        else if (id == "osc1_square_level") params_.osc1_square_level = eff;
+        else if (id == "osc2_level") params_.osc2_level = eff;
+        else if (id == "detune2_semitones") params_.detune2_semitones = eff;
+        else if (id == "detune2_cents") params_.detune2_cents = eff;
+        else if (id == "osc2_pwm") params_.osc2_pwm = eff;
+        else if (id == "amp_attack") params_.amp_attack = eff;
+        else if (id == "amp_decay") params_.amp_decay = eff;
+        else if (id == "amp_sustain") params_.amp_sustain = eff;
+        else if (id == "amp_release") params_.amp_release = eff;
+        else if (id == "flt_attack") params_.flt_attack = eff;
+        else if (id == "flt_decay") params_.flt_decay = eff;
+        else if (id == "flt_sustain") params_.flt_sustain = eff;
+        else if (id == "flt_release") params_.flt_release = eff;
+        else if (id == "flt_env_amount") params_.flt_env_amount = eff;
+        else if (id == "flt_keytrack") params_.flt_keytrack = eff;
+        else if (id == "flt_vel") params_.flt_vel = eff;
+    }
+
+    std::string choice(const std::string& id, const std::string& fallback) const {
+        auto it = choices_.find(id);
+        return it == choices_.end() ? fallback : it->second;
     }
 
     void syncEffects() {
@@ -481,6 +592,12 @@ private:
         }
     }
 
+    struct ModRow {
+        int src;
+        double amt;
+        std::string dst;
+    };
+
     double sr_;
     int blockSize_;
     int maxVoices_;
@@ -501,6 +618,12 @@ private:
     std::vector<double> lfoAmp_;
     bool modLfo_[2] = {false, false};
     bool masterBypassed_ = false;
+    std::vector<ModRow> modRows_;
+    bool wheelUsed_ = false;
+    bool atUsed_ = false;
+    double wheelS_ = 0.0;
+    double atS_ = 0.0;
+    int lastNote_ = -1;
     std::unordered_map<std::string, double> values_;
     std::unordered_map<std::string, std::string> choices_;
     std::set<int> sustained_;

@@ -92,6 +92,33 @@ SCENARIOS = {
         "fx_delay_pingpong": True, "fx_chorus_depth": 0.6, "fx_delay_time": 350.0,
         "fx_reverb_amount": 0.5, "fx_bitcrush_amount": 0.4,
         "lpf_cutoff": 3000.0, "lpf_resonance": 0.5}),
+    "mod_lfo_level": lambda: _scenario(
+        {"mod1_src": "LFO 1", "mod1_amt": 1.0, "mod1_dst": "Osc 1: Level",
+         "lfo_wave": "sine", "lfo_rate": 2.0}),
+    "mod_lfo_filter": lambda: _scenario(
+        {"mod1_src": "LFO 1", "mod1_amt": 1.0, "mod1_dst": "Filter: Cutoff",
+         "lfo_wave": "triangle", "lfo_rate": 1.0, "lpf_cutoff": 1000.0}),
+    "mod_lfo_chorus": lambda: _scenario(
+        {"mod1_src": "LFO 2", "mod1_amt": 1.0, "mod1_dst": "Chorus: Depth",
+         "lfo2_wave": "saw", "lfo2_rate": 2.0, "fx_chorus": True,
+         "fx_chorus_depth": 0.4}),
+    "mod_lfo_fm": lambda: _scenario(
+        {"mod1_src": "LFO 1", "mod1_amt": 1.0, "mod1_dst": "Modulation Amount",
+         "lfo_wave": "square", "lfo_rate": 3.0, "osc2_level": 0.8,
+         "mod_mode": "fm", "fm_depth": 0.3}),
+    "mod_wheel_filter": lambda: {
+        "sample_rate": SR, "block_size": BLOCK, "blocks": BLOCKS,
+        "params": {"mod1_src": "Mod Wheel", "mod1_amt": 1.0,
+                   "mod1_dst": "Filter: Cutoff", "lpf_cutoff": 1000.0},
+        "events": _chord_events(NOTE_OFF_BLOCK) + [{"block": 5, "wheel": 0.8}],
+    },
+    "mod_at_fm": lambda: {
+        "sample_rate": SR, "block_size": BLOCK, "blocks": BLOCKS,
+        "params": {"mod1_src": "Aftertouch", "mod1_amt": 1.0,
+                   "mod1_dst": "Modulation Amount", "osc2_level": 0.8,
+                   "mod_mode": "fm", "fm_depth": 0.3},
+        "events": _chord_events(NOTE_OFF_BLOCK) + [{"block": 5, "aftertouch": 0.7}],
+    },
 }
 
 
@@ -112,6 +139,10 @@ def render(scenario, registry):
                 engine.note_on(*event["note_on"])
             if "note_off" in event:
                 engine.note_off(*event["note_off"])
+            if "wheel" in event:
+                engine.set_mod_wheel(event["wheel"])
+            if "aftertouch" in event:
+                engine.set_aftertouch(event["aftertouch"])
         out.append(engine.render())
     return np.concatenate(out, axis=0).astype(np.float32)
 

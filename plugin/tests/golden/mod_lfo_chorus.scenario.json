@@ -1,0 +1,68 @@
+{
+  "sample_rate": 44100,
+  "block_size": 256,
+  "blocks": 60,
+  "params": {
+    "mod1_src": "LFO 2",
+    "mod1_amt": 1.0,
+    "mod1_dst": "Chorus: Depth",
+    "lfo2_wave": "saw",
+    "lfo2_rate": 2.0,
+    "fx_chorus": true,
+    "fx_chorus_depth": 0.4
+  },
+  "events": [
+    {
+      "block": 0,
+      "note_on": [
+        48,
+        100
+      ]
+    },
+    {
+      "block": 0,
+      "note_on": [
+        52,
+        100
+      ]
+    },
+    {
+      "block": 0,
+      "note_on": [
+        55,
+        100
+      ]
+    },
+    {
+      "block": 0,
+      "note_on": [
+        59,
+        100
+      ]
+    },
+    {
+      "block": 20,
+      "note_off": [
+        48
+      ]
+    },
+    {
+      "block": 20,
+      "note_off": [
+        52
+      ]
+    },
+    {
+      "block": 20,
+      "note_off": [
+        55
+      ]
+    },
+    {
+      "block": 20,
+      "note_off": [
+        59
+      ]
+    }
+  ]
+}

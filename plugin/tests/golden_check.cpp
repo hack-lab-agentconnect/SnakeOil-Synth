@@ -106,6 +106,12 @@ int main(int argc, char** argv) {
             if (const jsonmini::Value* off = event->find("note_off")) {
                 engine.noteOff(static_cast<int>(off->array[0].number));
             }
+            if (const jsonmini::Value* wheel = event->find("wheel")) {
+                engine.setModWheel(wheel->number);
+            }
+            if (const jsonmini::Value* at = event->find("aftertouch")) {
+                engine.setAftertouch(at->number);
+            }
             if (const jsonmini::Value* set = event->find("set")) {
                 for (const auto& entry : set->object) {
                     applySet(engine, entry.first, entry.second);

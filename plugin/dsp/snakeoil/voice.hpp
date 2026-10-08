@@ -54,6 +54,7 @@ struct Params {
     bool lpf_in_voice = true;
     bool lpf_active = true;
     bool lpf_ladder = false;
+    bool mod_filter = false;
     BiquadCoeffs lpf12{};
     BiquadPair lpf24{};
     double lpf_cutoff = kDefaultLpfCutoff;
@@ -225,7 +226,8 @@ public:
 private:
     void applyVoiceFilter(int n, const Params& p) {
         const bool perVoice = p.flt_env_amount != 0.0 || p.flt_keytrack != 0.0 ||
-                              p.flt_vel != 0.0 || p.lfo_filter_oct != 0.0;
+                              p.flt_vel != 0.0 || p.lfo_filter_oct != 0.0 ||
+                              p.mod_filter;
         if (!perVoice) {
             if (!p.lpf_active) {
                 if (lpfBypassed_) {
