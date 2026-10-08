@@ -75,6 +75,13 @@ int main(int argc, char** argv) {
     const jsonmini::Value* events = scenario.find("events");
 
     snakeoil::Engine engine(sampleRate, blockSize);
+    if (const jsonmini::Value* params = scenario.find("params")) {
+        if (params->isObject()) {
+            for (const auto& entry : params->object) {
+                applySet(engine, entry.first, entry.second);
+            }
+        }
+    }
     std::vector<std::vector<const jsonmini::Value*>> byBlock(static_cast<std::size_t>(blocks));
     if (events != nullptr && events->isArray()) {
         for (const auto& event : events->array) {

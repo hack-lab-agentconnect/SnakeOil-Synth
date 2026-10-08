@@ -31,18 +31,67 @@ NOTE_OFF_BLOCK = 20
 BLOCKS = 60
 
 
-def _default_scenario():
-    events = []
-    for note in NOTES:
-        events.append({"block": 0, "note_on": [note, 100]})
-    for note in NOTES:
-        events.append({"block": NOTE_OFF_BLOCK, "note_off": [note]})
-    return {"sample_rate": SR, "block_size": BLOCK, "blocks": BLOCKS,
-            "params": {}, "events": events}
+def _chord_events(note_off_block):
+    events = [{"block": 0, "note_on": [note, 100]} for note in NOTES]
+    events += [{"block": note_off_block, "note_off": [note]} for note in NOTES]
+    return events
+
+
+def _scenario(params=None, blocks=BLOCKS, note_off_block=NOTE_OFF_BLOCK):
+    return {"sample_rate": SR, "block_size": BLOCK, "blocks": blocks,
+            "params": dict(params or {}), "events": _chord_events(note_off_block)}
 
 
 SCENARIOS = {
-    "default": _default_scenario,
+    "default": lambda: _scenario(),
+    "filter_env": lambda: _scenario(
+        {"flt_env_amount": 0.8, "lpf_cutoff": 500.0, "lpf_resonance": 0.5}),
+    "ladder": lambda: _scenario(
+        {"lpf_slope": "24 dB", "lpf_cutoff": 800.0, "lpf_resonance": 0.5}),
+    "keytrack_vel": lambda: _scenario(
+        {"flt_keytrack": 0.5, "flt_vel": 0.5, "lpf_cutoff": 1000.0}),
+    "amp_env": lambda: _scenario(
+        {"amp_attack": 0.2, "amp_decay": 0.3, "amp_sustain": 0.2, "amp_release": 0.5}),
+    "limiter": lambda: _scenario(
+        {"auto_limiter": True, "master_gain": 1.2}),
+    "ladder_osc": lambda: _scenario(
+        {"lpf_slope": "24 dB", "lpf_cutoff": 400.0, "lpf_resonance": 0.95}),
+    "glide": lambda: {
+        "sample_rate": SR, "block_size": BLOCK, "blocks": BLOCKS,
+        "params": {"glide_time": 0.2},
+        "events": [
+            {"block": 0, "note_on": [48, 100]},
+            {"block": 10, "note_on": [60, 100]},
+            {"block": 40, "note_off": [48]},
+            {"block": 40, "note_off": [60]},
+        ],
+    },
+    "lfo_pitch": lambda: _scenario(
+        {"lfo_depth": 1.0, "lfo_dest": "pitch", "lfo_wave": "sine", "lfo_rate": 2.0}),
+    "lfo_filter": lambda: _scenario(
+        {"lfo2_depth": 1.0, "lfo2_dest": "filter", "lfo2_wave": "triangle",
+         "lfo2_rate": 1.0, "lpf_cutoff": 1000.0}),
+    "lfo_pwm": lambda: _scenario(
+        {"lfo_depth": 0.8, "lfo_dest": "pwm", "lfo_wave": "saw", "lfo_rate": 3.0,
+         "osc1_pwm": 0.2}),
+    "lfo_amp": lambda: _scenario(
+        {"lfo_depth": 1.0, "lfo_dest": "amp", "lfo_wave": "square", "lfo_rate": 4.0}),
+    "chorus": lambda: _scenario({"fx_chorus": True, "fx_chorus_depth": 0.6}),
+    "delay": lambda: _scenario(
+        {"fx_delay": True, "fx_delay_time": 350.0, "fx_delay_feedback": 0.4,
+         "fx_delay_damp": 0.3}),
+    "delay_pp": lambda: _scenario(
+        {"fx_delay": True, "fx_delay_time": 350.0, "fx_delay_pingpong": True}),
+    "reverb": lambda: _scenario(
+        {"fx_reverb": True, "fx_reverb_amount": 0.5, "fx_reverb_size": 0.9,
+         "fx_reverb_damp": 0.3}),
+    "bitcrush": lambda: _scenario({"fx_bitcrush": True, "fx_bitcrush_amount": 0.6}),
+    "busy": lambda: _scenario({
+        "osc2_level": 0.8, "mod_mode": "fm", "fm_depth": 0.4, "detune2_semitones": 7.0,
+        "fx_chorus": True, "fx_delay": True, "fx_reverb": True, "fx_bitcrush": True,
+        "fx_delay_pingpong": True, "fx_chorus_depth": 0.6, "fx_delay_time": 350.0,
+        "fx_reverb_amount": 0.5, "fx_bitcrush_amount": 0.4,
+        "lpf_cutoff": 3000.0, "lpf_resonance": 0.5}),
 }
 
 

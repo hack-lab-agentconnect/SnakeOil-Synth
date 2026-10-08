@@ -1,0 +1,76 @@
+{
+  "sample_rate": 44100,
+  "block_size": 256,
+  "blocks": 60,
+  "params": {
+    "osc2_level": 0.8,
+    "mod_mode": "fm",
+    "fm_depth": 0.4,
+    "detune2_semitones": 7.0,
+    "fx_chorus": true,
+    "fx_delay": true,
+    "fx_reverb": true,
+    "fx_bitcrush": true,
+    "fx_delay_pingpong": true,
+    "fx_chorus_depth": 0.6,
+    "fx_delay_time": 350.0,
+    "fx_reverb_amount": 0.5,
+    "fx_bitcrush_amount": 0.4,
+    "lpf_cutoff": 3000.0,
+    "lpf_resonance": 0.5
+  },
+  "events": [
+    {
+      "block": 0,
+      "note_on": [
+        48,
+        100
+      ]
+    },
+    {
+      "block": 0,
+      "note_on": [
+        52,
+        100
+      ]
+    },
+    {
+      "block": 0,
+      "note_on": [
+        55,
+        100
+      ]
+    },
+    {
+      "block": 0,
+      "note_on": [
+        59,
+        100
+      ]
+    },
+    {
+      "block": 20,
+      "note_off": [
+        48
+      ]
+    },
+    {
+      "block": 20,
+      "note_off": [
+        52
+      ]
+    },
+    {
+      "block": 20,
+      "note_off": [
+        55
+      ]
+    },
+    {
+      "block": 20,
+      "note_off": [
+        59
+      ]
+    }
+  ]
+}

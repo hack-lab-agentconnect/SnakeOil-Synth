@@ -9,6 +9,9 @@
 
 #include "snakeoil/biquad.hpp"
 #include "snakeoil/constants.hpp"
+#include "snakeoil/effects.hpp"
+#include "snakeoil/limiter.hpp"
+#include "snakeoil/lfo.hpp"
 #include "snakeoil/voice.hpp"
 
 namespace snakeoil {
@@ -20,7 +23,8 @@ namespace snakeoil {
 class Engine {
 public:
     Engine(double sampleRate, int blockSize, int maxVoices = kMaxVoices)
-        : sr_(sampleRate), blockSize_(blockSize), maxVoices_(std::min(maxVoices, kMaxVoices)) {
+        : sr_(sampleRate), blockSize_(blockSize), maxVoices_(std::min(maxVoices, kMaxVoices)),
+          effects_(sampleRate) {
         for (int i = 0; i < maxVoices_; ++i) {
             voices_.emplace_back(sampleRate);
         }
@@ -46,6 +50,12 @@ public:
 
     // velocity is the raw MIDI value 0..127, as in SynthEngine.note_on.
     void noteOn(int note, double velocity) {
+        const bool held = [this] {
+            for (const auto& v : voices_) {
+                if (v.gated()) return true;
+            }
+            return false;
+        }();
         for (auto& v : voices_) {
             if (v.active() && v.note() == note && v.gated()) {
                 v.noteOff();
@@ -54,8 +64,16 @@ public:
         ++order_;
         const bool velocityOn = values_.at("velocity_on") >= 0.5;
         const double vel = velocityOn ? clampUnit(velocity / 127.0) : kFixedVelocity;
+        const double glideTime = values_.at("glide_time");
+        const bool legato = values_.at("glide_legato") >= 0.5;
+        double glideFrom = -1.0;
+        if (glideTime > 0.0 && hasLastFreq_ && (!legato || held)) {
+            glideFrom = lastFreq_;
+        }
+        lastFreq_ = midiNoteToFreq(note);
+        hasLastFreq_ = true;
         Voice& voice = allocate();
-        voice.noteOn(note, vel, order_, voice.active());
+        voice.noteOn(note, vel, order_, voice.active(), glideFrom, glideTime);
     }
 
     void noteOff(int note) {
@@ -132,6 +150,16 @@ public:
     void render(float* interleaved, int n) {
         syncHotParams();
         ensureBuffers(n);
+        params_.lfo_pitch_ratio = 1.0;
+        params_.lfo_filter_oct = 0.0;
+        params_.lfo_pwm = 0.0;
+        params_.lfo_amp = nullptr;
+        if (lfoEnabled()) {
+            if (static_cast<int>(lfoAmp_.size()) < n) {
+                lfoAmp_.resize(n);
+            }
+            runLfo(n);
+        }
         std::fill(mix_.begin(), mix_.begin() + n, 0.0);
         for (auto& v : voices_) {
             if (v.active()) {
@@ -140,12 +168,34 @@ public:
             }
         }
         if (!params_.lpf_in_voice && params_.lpf_active) {
-            masterLpf_.process(mix_.data(), n, params_.lpf);
+            processMasterFilter(n);
         }
         for (int i = 0; i < n; ++i) {
-            const double y = std::tanh(mix_[i] * params_.master_gain);
-            interleaved[2 * i] = static_cast<float>(y);
-            interleaved[2 * i + 1] = static_cast<float>(y);
+            left_[i] = mix_[i];
+            right_[i] = mix_[i];
+        }
+        if (effectsEnabled()) {
+            effects_.process(left_.data(), right_.data(), n);
+        }
+        for (int i = 0; i < n; ++i) {
+            left_[i] *= params_.master_gain;
+            right_[i] *= params_.master_gain;
+        }
+        if (autoLimiter_) {
+            const double peak = limiter_.process(left_.data(), right_.data(), n);
+            if (peak < kLimiterSilenceThreshold) {
+                limiterSilentS_ += n / sr_;
+                if (limiterSilentS_ >= kLimiterSilenceS) {
+                    limiter_.reset();
+                    limiterSilentS_ = 0.0;
+                }
+            } else {
+                limiterSilentS_ = 0.0;
+            }
+        }
+        for (int i = 0; i < n; ++i) {
+            interleaved[2 * i] = static_cast<float>(std::tanh(left_[i]));
+            interleaved[2 * i + 1] = static_cast<float>(std::tanh(right_[i]));
         }
     }
 
@@ -166,6 +216,14 @@ private:
             {"velocity_on", 1.0}, {"auto_limiter", 0.0},
             {"amp_attack", kAmpAttack}, {"amp_decay", kAmpDecay},
             {"amp_sustain", kAmpSustain}, {"amp_release", kAmpRelease},
+            {"glide_time", 0.0}, {"glide_legato", 0.0},
+            {"lfo_depth", 0.0}, {"lfo2_depth", 0.0},
+            {"fx_chorus", 0.0}, {"fx_chorus_depth", 0.3},
+            {"fx_delay", 0.0}, {"fx_delay_time", 300.0}, {"fx_delay_pingpong", 0.0},
+            {"fx_delay_feedback", 0.35}, {"fx_delay_damp", 0.25}, {"fx_delay_sync", 0.0},
+            {"fx_reverb", 0.0}, {"fx_reverb_amount", 0.3},
+            {"fx_reverb_size", 0.84}, {"fx_reverb_damp", 0.25},
+            {"fx_bitcrush", 0.0}, {"fx_bitcrush_amount", 0.5},
         };
         choices_ = {
             {"mod_mode", "fm"}, {"lpf_slope", "12 dB"},
@@ -192,19 +250,74 @@ private:
         params_.fm_depth = clampUnit(num("fm_depth", 0.0));
         params_.mod_index = params_.fm_depth * kFmIndexMax;
         params_.master_gain = std::min(std::max(num("master_gain", kDefaultMasterGain), 0.0), 1.5);
+
+        params_.amp_attack = std::max(num("amp_attack", kAmpAttack), 1.0 / sr_);
+        params_.amp_decay = std::max(num("amp_decay", kAmpDecay), 1.0 / sr_);
+        params_.amp_sustain = clampUnit(num("amp_sustain", kAmpSustain));
+        params_.amp_release = std::max(num("amp_release", kAmpRelease), 1.0 / sr_);
+        params_.flt_attack = std::max(num("flt_attack", kFltAttack), 1.0 / sr_);
+        params_.flt_decay = std::max(num("flt_decay", kFltDecay), 1.0 / sr_);
+        params_.flt_sustain = clampUnit(num("flt_sustain", kFltSustain));
+        params_.flt_release = std::max(num("flt_release", kFltRelease), 1.0 / sr_);
+        params_.flt_env_amount = std::min(std::max(num("flt_env_amount", 0.0), -1.0), 1.0);
+        params_.flt_keytrack = clampUnit(num("flt_keytrack", 0.0));
+        params_.flt_vel = clampUnit(num("flt_vel", 0.0));
+
         params_.lpf_in_voice = num("lpf_master", 0.0) < 0.5;
-        const double cutoff = std::min(std::max(num("lpf_cutoff", kDefaultLpfCutoff), kLpfMinHz), kLpfMaxHz);
-        const double resonance = clampUnit(num("lpf_resonance", 0.0));
-        if (cutoff >= kLpfMaxHz / 1.01) {
+        params_.lpf_cutoff = std::min(std::max(num("lpf_cutoff", kDefaultLpfCutoff), kLpfMinHz), kLpfMaxHz);
+        params_.lpf_resonance = clampUnit(num("lpf_resonance", 0.0));
+        auto slopeIt = choices_.find("lpf_slope");
+        params_.lpf_ladder = slopeIt != choices_.end() && slopeIt->second == "24 dB";
+        if (params_.lpf_cutoff >= kLpfMaxHz / 1.01) {
             params_.lpf_active = false;
         } else {
             params_.lpf_active = true;
-            params_.lpf = lpfCoefficients(cutoff, resonance, sr_);
+            if (params_.lpf_ladder) {
+                params_.lpf24 = lpf24Coefficients(params_.lpf_cutoff, params_.lpf_resonance, sr_);
+            } else {
+                params_.lpf12 = lpfCoefficients(params_.lpf_cutoff, params_.lpf_resonance, sr_);
+            }
         }
         auto modeIt = choices_.find("mod_mode");
         if (modeIt != choices_.end()) {
             params_.mod_mode = parseMode(modeIt->second);
         }
+        const bool autoL = num("auto_limiter", 0.0) >= 0.5;
+        if (autoL != autoLimiter_) {
+            limiter_.reset();
+            limiterSilentS_ = 0.0;
+            autoLimiter_ = autoL;
+        }
+        syncEffects();
+    }
+
+    void syncEffects() {
+        const auto num = [this](const char* id, double fallback) {
+            auto it = values_.find(id);
+            return it == values_.end() ? fallback : it->second;
+        };
+        effects_.chorus().setEnabled(num("fx_chorus", 0.0) >= 0.5);
+        effects_.chorus().setDepth(num("fx_chorus_depth", 0.3));
+        effects_.delay().setEnabled(num("fx_delay", 0.0) >= 0.5);
+        effects_.delay().setTimeMs(num("fx_delay_time", 300.0));
+        effects_.delay().setPingpong(num("fx_delay_pingpong", 0.0) >= 0.5);
+        effects_.delay().setFeedback(num("fx_delay_feedback", 0.35));
+        effects_.delay().setDamp(num("fx_delay_damp", 0.25));
+        effects_.reverb().setEnabled(num("fx_reverb", 0.0) >= 0.5);
+        effects_.reverb().setAmount(num("fx_reverb_amount", 0.3));
+        effects_.reverb().setRoom(num("fx_reverb_size", 0.84));
+        effects_.reverb().setDamp(num("fx_reverb_damp", 0.25));
+        effects_.bitcrush().setEnabled(num("fx_bitcrush", 0.0) >= 0.5);
+        effects_.bitcrush().setAmount(num("fx_bitcrush_amount", 0.5));
+    }
+
+    bool effectsEnabled() const {
+        const auto get = [this](const char* id) {
+            auto it = values_.find(id);
+            return it == values_.end() ? 0.0 : it->second;
+        };
+        return get("fx_chorus") >= 0.5 || get("fx_delay") >= 0.5 ||
+               get("fx_reverb") >= 0.5 || get("fx_bitcrush") >= 0.5;
     }
 
     static Mode parseMode(const std::string& name) {
@@ -213,6 +326,108 @@ private:
         if (name == "ring") return Mode::kRing;
         if (name == "sync") return Mode::kSync;
         return Mode::kFm;
+    }
+
+    bool lfoEnabled() const {
+        const auto get = [this](const char* id) {
+            auto it = values_.find(id);
+            return it == values_.end() ? 0.0 : it->second;
+        };
+        return clampUnit(get("lfo_depth")) > 0.0 || clampUnit(get("lfo2_depth")) > 0.0 ||
+               modLfo_[0] || modLfo_[1];
+    }
+
+    void runLfo(int n) {
+        const auto num = [this](const std::string& id, double fallback) {
+            auto it = values_.find(id);
+            return it == values_.end() ? fallback : it->second;
+        };
+        const auto cho = [this](const std::string& id, const std::string& fallback) {
+            auto it = choices_.find(id);
+            return it == choices_.end() ? fallback : it->second;
+        };
+        const char* pre[2] = {"lfo", "lfo2"};
+        const char* cross[2] = {"lfo2-rate", "lfo1-rate"};
+        LFO* lfos[2] = {&lfo1_, &lfo2_};
+        double depth[2] = {clampUnit(num("lfo_depth", 0.0)),
+                           clampUnit(num("lfo2_depth", 0.0))};
+        std::set<std::string> seen;
+        double cur[2] = {0.0, 0.0};
+        bool ampActive = false;
+        for (int i = 0; i < 2; ++i) {
+            const bool routed = depth[i] > 0.0;
+            double rate = num(std::string(pre[i]) + "_rate", kDefaultLfoRate);
+            if (!routed && !modLfo_[i]) {
+                lfoRateEff_[i] = rate;
+                continue;
+            }
+            const std::string dest = cho(std::string(pre[i]) + "_dest", i == 0 ? "pitch" : "filter");
+            const int o = 1 - i;
+            if (depth[o] > 0.0 && cho(std::string(pre[o]) + "_dest", "") == cross[o]) {
+                rate *= std::pow(2.0, depth[o] * lfoLast_[o] * kLfoRateModOctaves);
+                rate = std::min(std::max(rate, kLfoRateFloor), kLfoRateCeil);
+            }
+            lfoRateEff_[i] = rate;
+            const bool wantArray = routed && dest == "amp";
+            const double mid = lfos[i]->nextBlock(
+                n, sr_, rate, cho(std::string(pre[i]) + "_wave", "sine"),
+                wantArray ? lfoAmp_.data() : nullptr);
+            cur[i] = mid;
+            if (!routed) {
+                continue;
+            }
+            const bool first = seen.insert(dest).second;
+            if (dest == "pitch") {
+                const double ratio = std::pow(2.0, depth[i] * kLfoPitchSemitones * mid / 12.0);
+                params_.lfo_pitch_ratio = first ? ratio : params_.lfo_pitch_ratio * ratio;
+            } else if (dest == "filter") {
+                const double octs = depth[i] * kLfoFilterOctaves * mid;
+                params_.lfo_filter_oct = first ? octs : params_.lfo_filter_oct + octs;
+            } else if (dest == "pwm") {
+                const double off = depth[i] * kLfoPwmRange * mid;
+                params_.lfo_pwm = first ? off : params_.lfo_pwm + off;
+            } else if (dest == "amp") {
+                for (int k = 0; k < n; ++k) {
+                    const double gain = 1.0 - depth[i] * (0.5 - 0.5 * lfoAmp_[k]);
+                    lfoAmp_[k] = ampActive ? lfoAmp_[k] * gain : gain;
+                }
+                ampActive = true;
+            }
+        }
+        lfoLast_[0] = cur[0];
+        lfoLast_[1] = cur[1];
+        params_.lfo_amp = ampActive ? lfoAmp_.data() : nullptr;
+    }
+
+    void processMasterFilter(int n) {
+        if (params_.lfo_filter_oct != 0.0) {
+            double cutoff = params_.lpf_cutoff * std::pow(2.0, params_.lfo_filter_oct);
+            cutoff = std::min(std::max(cutoff, kLpfMinHz), 0.45 * sr_);
+            if (cutoff >= kLpfMaxHz / 1.01) {
+                if (!masterBypassed_) {
+                    masterLpf_.reset();
+                    masterBypassed_ = true;
+                }
+                return;
+            }
+            if (masterBypassed_) {
+                masterLpf_.reset();
+                masterBypassed_ = false;
+            }
+            if (params_.lpf_ladder) {
+                masterLpf_.process(mix_.data(), n,
+                                   lpf24Coefficients(cutoff, params_.lpf_resonance, sr_));
+            } else {
+                masterLpf_.process(mix_.data(), n,
+                                   lpfCoefficients(cutoff, params_.lpf_resonance, sr_));
+            }
+            return;
+        }
+        if (params_.lpf_ladder) {
+            masterLpf_.process(mix_.data(), n, params_.lpf24);
+        } else {
+            masterLpf_.process(mix_.data(), n, params_.lpf12);
+        }
     }
 
     Voice& allocate() {
@@ -248,6 +463,12 @@ private:
         if (static_cast<int>(mix_.size()) < n) {
             mix_.resize(n);
         }
+        if (static_cast<int>(left_.size()) < n) {
+            left_.resize(n);
+        }
+        if (static_cast<int>(right_.size()) < n) {
+            right_.resize(n);
+        }
         prepare(n);
     }
 
@@ -266,7 +487,20 @@ private:
     std::vector<Voice> voices_;
     Params params_;
     LowPass masterLpf_;
+    EffectChain effects_;
     std::vector<double> mix_;
+    std::vector<double> left_;
+    std::vector<double> right_;
+    Limiter limiter_;
+    bool autoLimiter_ = false;
+    double limiterSilentS_ = 0.0;
+    LFO lfo1_;
+    LFO lfo2_;
+    double lfoLast_[2] = {0.0, 0.0};
+    double lfoRateEff_[2] = {kDefaultLfoRate, kDefaultLfoRate};
+    std::vector<double> lfoAmp_;
+    bool modLfo_[2] = {false, false};
+    bool masterBypassed_ = false;
     std::unordered_map<std::string, double> values_;
     std::unordered_map<std::string, std::string> choices_;
     std::set<int> sustained_;
@@ -274,6 +508,8 @@ private:
     double pitchBend_ = 0.0;
     double modWheel_ = 0.0;
     double aftertouch_ = 0.0;
+    bool hasLastFreq_ = false;
+    double lastFreq_ = 0.0;
     long order_ = 0;
 };
 

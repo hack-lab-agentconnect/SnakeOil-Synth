@@ -1,0 +1,65 @@
+{
+  "sample_rate": 44100,
+  "block_size": 256,
+  "blocks": 60,
+  "params": {
+    "lfo_depth": 1.0,
+    "lfo_dest": "pitch",
+    "lfo_wave": "sine",
+    "lfo_rate": 2.0
+  },
+  "events": [
+    {
+      "block": 0,
+      "note_on": [
+        48,
+        100
+      ]
+    },
+    {
+      "block": 0,
+      "note_on": [
+        52,
+        100
+      ]
+    },
+    {
+      "block": 0,
+      "note_on": [
+        55,
+        100
+      ]
+    },
+    {
+      "block": 0,
+      "note_on": [
+        59,
+        100
+      ]
+    },
+    {
+      "block": 20,
+      "note_off": [
+        48
+      ]
+    },
+    {
+      "block": 20,
+      "note_off": [
+        52
+      ]
+    },
+    {
+      "block": 20,
+      "note_off": [
+        55
+      ]
+    },
+    {
+      "block": 20,
+      "note_off": [
+        59
+      ]
+    }
+  ]
+}
