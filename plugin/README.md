@@ -1,7 +1,9 @@
 # SnakeOil Synth VST3 plugin
 
 C++ port of the Python reference synth (`midi_synth/`) as a VST3 instrument (plus a Standalone app) built on JUCE.
-Design: `docs/superpowers/specs/2026-10-06-vst3-plugin-design.md`. Status: phase P0 (scaffold; outputs silence).
+Design: `docs/superpowers/specs/2026-10-06-vst3-plugin-design.md`. Status: phase P1 - the default signal path
+(osc 1 saw + square layer, envelope, 12 dB low-pass, voice, master gain + tanh) matches the Python golden
+bit-for-bit; the JUCE shell still outputs its P0 stub until P2 wires the DSP in.
 
 ## Build, test, install (Windows, no admin)
 
@@ -20,10 +22,23 @@ Outputs: `plugin\build\Release\SnakeOilSynth_artefacts\Release\VST3\SnakeOil Syn
 
 ## Layout
 
-- `dsp/` - `snakeoil_dsp`, pure C++20 static library, no JUCE dependency.
+- `dsp/` - `snakeoil_dsp`, pure C++20 DSP with no JUCE dependency (header-only):
+  `oscillator.hpp`, `envelope.hpp`, `biquad.hpp`, `voice.hpp`, `engine.hpp`.
 - `src/` - JUCE wrapper: processor and editor.
-- `tests/` - doctest unit tests (`snakeoil_tests`) and the golden harness stub (`golden_check`).
+- `tests/` - doctest unit tests (`snakeoil_tests`) and the golden harness (`golden_check`).
 - `tools/` - build, test and install scripts.
+
+## Golden sound lock
+
+`golden_check <scenario.json> <expected.f32>` replays a scenario and compares the
+rendered audio with the Python reference within 1e-6 absolute. `ctest` runs the
+`default` scenario. Regenerate the scenario and expected audio after an
+intentional sound change:
+
+    python tools/export_cpp_golden.py default
+
+`tools/export_params.py` writes `plugin/params.json` (the parameter registry) for
+the generated parameter layout in P2.
 
 ## Host setup
 
