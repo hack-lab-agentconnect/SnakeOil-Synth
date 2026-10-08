@@ -5,6 +5,8 @@
 
 #include <juce_audio_utils/juce_audio_utils.h>
 
+#include "PluginEditor.h"
+
 namespace {
 
 juce::StringArray splitChoices(const char* choices) {
@@ -67,7 +69,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout SnakeOilProcessor::makeLayou
 }
 
 void SnakeOilProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
-    const int block = std::max(samplesPerBlock, 64);
+    const int block = std::min(std::max(samplesPerBlock, 64), snakeoil::kMaxBlock);
     engine_ = std::make_unique<snakeoil::Engine>(sampleRate, block);
     scratch_.assign(static_cast<std::size_t>(block) * 2, 0.0f);
 }
@@ -131,23 +133,44 @@ void SnakeOilProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     handleMidi(midi);
     midi.clear();
 
+    if (auto* playHead = getPlayHead()) {
+        if (const auto position = playHead->getPosition()) {
+            if (const auto bpm = position->getBpm()) {
+                engine_->setHostTempo(*bpm, true);
+            }
+        }
+    }
+
     if (scratch_.size() < static_cast<std::size_t>(n) * 2) {
         scratch_.assign(static_cast<std::size_t>(n) * 2, 0.0f);
     }
-    engine_->render(scratch_.data(), n);
-
     const int channels = buffer.getNumChannels();
-    for (int ch = 0; ch < channels; ++ch) {
-        const int source = ch < 2 ? ch : 0;
-        float* out = buffer.getWritePointer(ch);
-        for (int i = 0; i < n; ++i) {
-            out[i] = scratch_[static_cast<std::size_t>(i) * 2 + source];
+    int done = 0;
+    while (done < n) {
+        const int chunk = std::min(n - done, snakeoil::kMaxBlock);
+        engine_->render(scratch_.data(), chunk);
+        for (int ch = 0; ch < channels; ++ch) {
+            const int source = ch < 2 ? ch : 0;
+            float* out = buffer.getWritePointer(ch) + done;
+            for (int i = 0; i < chunk; ++i) {
+                out[i] = scratch_[static_cast<std::size_t>(i) * 2 + source];
+            }
         }
+        done += chunk;
     }
 }
 
 juce::AudioProcessorEditor* SnakeOilProcessor::createEditor() {
-    return new juce::GenericAudioProcessorEditor(*this);
+    return new SnakeOilEditor(*this);
+}
+
+void SnakeOilProcessor::engineMeter(double& left, double& right, bool& clipped) const {
+    if (engine_ != nullptr) {
+        engine_->peekMeter(left, right, clipped);
+    } else {
+        left = right = 0.0;
+        clipped = false;
+    }
 }
 
 void SnakeOilProcessor::getStateInformation(juce::MemoryBlock& destData) {

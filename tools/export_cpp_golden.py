@@ -119,6 +119,9 @@ SCENARIOS = {
                    "mod_mode": "fm", "fm_depth": 0.3},
         "events": _chord_events(NOTE_OFF_BLOCK) + [{"block": 5, "aftertouch": 0.7}],
     },
+    "tempo_sync": lambda: _scenario(
+        {"fx_delay": True, "fx_delay_sync": True, "fx_delay_division": "1/8",
+         "tempo_bpm": 120.0}),
 }
 
 

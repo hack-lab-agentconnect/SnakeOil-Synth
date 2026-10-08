@@ -198,9 +198,32 @@ public:
             }
         }
         for (int i = 0; i < n; ++i) {
-            interleaved[2 * i] = static_cast<float>(std::tanh(left_[i]));
-            interleaved[2 * i + 1] = static_cast<float>(std::tanh(right_[i]));
+            const double l = std::tanh(left_[i]);
+            const double r = std::tanh(right_[i]);
+            interleaved[2 * i] = static_cast<float>(l);
+            interleaved[2 * i + 1] = static_cast<float>(r);
+            meterL_ = std::max(meterL_, std::fabs(l));
+            meterR_ = std::max(meterR_, std::fabs(r));
+            if (std::fabs(left_[i]) >= kClipThreshold || std::fabs(right_[i]) >= kClipThreshold) {
+                meterClip_ = true;
+            }
         }
+    }
+
+    // Post-clipper peaks and the clip flag since the last take, then reset.
+    void takeMeter(double& left, double& right, bool& clipped) {
+        left = meterL_;
+        right = meterR_;
+        clipped = meterClip_;
+        meterL_ = 0.0;
+        meterR_ = 0.0;
+        meterClip_ = false;
+    }
+
+    void peekMeter(double& left, double& right, bool& clipped) const {
+        left = meterL_;
+        right = meterR_;
+        clipped = meterClip_;
     }
 
 private:
@@ -410,7 +433,13 @@ private:
         effects_.chorus().setEnabled(num("fx_chorus", 0.0) >= 0.5);
         effects_.chorus().setDepth(num("fx_chorus_depth", 0.3));
         effects_.delay().setEnabled(num("fx_delay", 0.0) >= 0.5);
-        effects_.delay().setTimeMs(num("fx_delay_time", 300.0));
+        double delayMs = num("fx_delay_time", 300.0);
+        if (num("fx_delay_sync", 0.0) >= 0.5) {
+            const double bpm = effectiveBpm();
+            delayMs = 60000.0 / bpm * divisionBeats(choice("fx_delay_division", "1/8"));
+            delayMs = std::min(std::max(delayMs, 1.0), 4000.0);
+        }
+        effects_.delay().setTimeMs(delayMs);
         effects_.delay().setPingpong(num("fx_delay_pingpong", 0.0) >= 0.5);
         effects_.delay().setFeedback(num("fx_delay_feedback", 0.35));
         effects_.delay().setDamp(num("fx_delay_damp", 0.25));
@@ -429,6 +458,33 @@ private:
         };
         return get("fx_chorus") >= 0.5 || get("fx_delay") >= 0.5 ||
                get("fx_reverb") >= 0.5 || get("fx_bitcrush") >= 0.5;
+    }
+
+    // The tempo driving a synced delay: the host tempo when the wrapper
+    // supplies one, else the manual tempo_bpm.
+    double effectiveBpm() const {
+        double bpm = hasHostTempo_ ? hostTempo_ : value("tempo_bpm", 120.0);
+        return std::min(std::max(bpm, 40.0), 240.0);
+    }
+
+    void setHostTempo(double bpm, bool valid) {
+        hostTempo_ = bpm;
+        hasHostTempo_ = valid;
+    }
+
+    static double divisionBeats(const std::string& name) {
+        if (name == "1/1") return 4.0;
+        if (name == "1/2") return 2.0;
+        if (name == "1/2.") return 3.0;
+        if (name == "1/4") return 1.0;
+        if (name == "1/4.") return 1.5;
+        if (name == "1/4T") return 2.0 / 3.0;
+        if (name == "1/8") return 0.5;
+        if (name == "1/8.") return 0.75;
+        if (name == "1/8T") return 1.0 / 3.0;
+        if (name == "1/16") return 0.25;
+        if (name == "1/16.") return 0.375;
+        return 0.5;
     }
 
     static Mode parseMode(const std::string& name) {
@@ -624,6 +680,11 @@ private:
     double wheelS_ = 0.0;
     double atS_ = 0.0;
     int lastNote_ = -1;
+    double meterL_ = 0.0;
+    double meterR_ = 0.0;
+    bool meterClip_ = false;
+    double hostTempo_ = 120.0;
+    bool hasHostTempo_ = false;
     std::unordered_map<std::string, double> values_;
     std::unordered_map<std::string, std::string> choices_;
     std::set<int> sustained_;

@@ -84,7 +84,8 @@ juce_add_plugin(SnakeOilSynth
     COPY_PLUGIN_AFTER_BUILD FALSE)
 
 target_sources(SnakeOilSynth PRIVATE
-    src/PluginProcessor.cpp)
+    src/PluginProcessor.cpp
+    src/PluginEditor.cpp)
 
 target_compile_definitions(SnakeOilSynth PUBLIC
     JUCE_WEB_BROWSER=0

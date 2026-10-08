@@ -1,11 +1,13 @@
 # SnakeOil Synth VST3 plugin
 
 C++ port of the Python reference synth (`midi_synth/`) as a VST3 instrument (plus a Standalone app) built on JUCE.
-Design: `docs/superpowers/specs/2026-10-06-vst3-plugin-design.md`. Status: phase P3 - the JUCE shell (P2) runs a
-DSP core that matches the Python reference bit-for-bit across the golden scenarios: oscillators (saw + square
-layer, PWM, fm/am/ring/sync), envelopes, 12 dB and 24 dB filters with resonance/whistle, filter envelope,
-key-tracking, velocity, glide, LFOs, limiter, and the stereo effects (chorus, ping-pong delay, reverb, bitcrush).
-Noise, unison, the mod matrix and host tempo sync are still to come (P4); the custom editor is P5.
+Design: `docs/superpowers/specs/2026-10-06-vst3-plugin-design.md`. Status: phases P1-P5 - the JUCE shell runs a DSP
+core that matches the Python reference bit-for-bit across 25 golden scenarios (oscillators, fm/am/ring/sync, envelopes,
+12/24 dB filters + whistle, filter env/key-tracking/velocity, glide, LFOs, limiter, stereo effects, the mod matrix and
+host-tempo-synced delay). A custom editor drives every parameter with output meters. Still open: the noise generator,
+unison (both need numpy's seeded RNG exported as data), hybrid voice allocation with tail slots, and the P6 hardening
+audit. The JUCE plugin build is not compiled in the development sandbox (no CMake/JUCE/system headers); only the
+no-JUCE DSP and golden harness are built there.
 
 ## Build, test, install (Windows, no admin)
 
