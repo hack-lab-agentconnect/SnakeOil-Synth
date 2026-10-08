@@ -1,13 +1,14 @@
 # SnakeOil Synth VST3 plugin
 
 C++ port of the Python reference synth (`midi_synth/`) as a VST3 instrument (plus a Standalone app) built on JUCE.
-Design: `docs/superpowers/specs/2026-10-06-vst3-plugin-design.md`. Status: phases P1-P5 - the JUCE shell runs a DSP
-core that matches the Python reference bit-for-bit across 25 golden scenarios (oscillators, fm/am/ring/sync, envelopes,
-12/24 dB filters + whistle, filter env/key-tracking/velocity, glide, LFOs, limiter, stereo effects, the mod matrix and
-host-tempo-synced delay). A custom editor drives every parameter with output meters. Still open: the noise generator,
-unison (both need numpy's seeded RNG exported as data), hybrid voice allocation with tail slots, and the P6 hardening
-audit. The JUCE plugin build is not compiled in the development sandbox (no CMake/JUCE/system headers); only the
-no-JUCE DSP and golden harness are built there.
+Design: `docs/superpowers/specs/2026-10-06-vst3-plugin-design.md`. Status: phases P1-P5 complete and P6 partly -
+the JUCE shell runs a DSP core that matches the Python reference bit-for-bit across 42 golden scenarios: oscillators
+(saw + square layer, PWM, fm/am/ring/sync), envelopes, filter env/key-tracking/velocity, 12/24 dB filters + whistle,
+glide, LFOs, unison, noise, limiter, stereo effects (chorus, ping-pong delay, reverb, bitcrush), the mod matrix,
+hybrid voice allocation with tail slots, and host-tempo-synced delay. A custom editor drives every parameter with
+output meters. Remaining: the P6 real-time-safety pass (the engine still looks parameters up by string each block),
+and P7 (CLAP/macOS/installer). The JUCE plugin build is not compiled in the development sandbox (no
+CMake/JUCE/system headers); only the no-JUCE DSP, golden harness and self-test are built there.
 
 ## Build, test, install (Windows, no admin)
 

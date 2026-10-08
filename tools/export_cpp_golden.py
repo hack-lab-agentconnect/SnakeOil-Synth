@@ -39,8 +39,8 @@ def _chord_events(note_off_block):
 
 
 def _scenario(params=None, blocks=BLOCKS, note_off_block=NOTE_OFF_BLOCK,
-              tail_slots=0):
-    return {"sample_rate": SR, "block_size": BLOCK, "blocks": blocks,
+              tail_slots=0, sample_rate=SR):
+    return {"sample_rate": sample_rate, "block_size": BLOCK, "blocks": blocks,
             "tail_slots": tail_slots, "params": dict(params or {}),
             "events": _chord_events(note_off_block)}
 
@@ -196,6 +196,11 @@ SCENARIOS = {
                                             "osc2_level": 0.5}),
     "unison5": lambda: _unison_scenario(5, {"unison_detune": 30.0,
                                             "unison_spread": 0.8}),
+    "sr48k": lambda: _scenario({"lpf_slope": "24 dB", "lpf_cutoff": 1200.0,
+                                "lpf_resonance": 0.4, "fx_chorus": True,
+                                "fx_delay": True, "fx_reverb": True,
+                                "osc2_level": 0.5},
+                               sample_rate=48000),
 }
 
 
