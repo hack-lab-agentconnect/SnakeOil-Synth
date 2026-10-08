@@ -126,6 +126,17 @@ public:
         fltEnv_.noteOff();
     }
 
+    // Release quickly (a short linear fade) instead of cutting the voice, used
+    // when the hybrid allocator has to free a playable voice.
+    void forceRelease(double seconds) {
+        gate_ = false;
+        env_.noteOff(seconds);
+        fltEnv_.noteOff();
+    }
+
+    int groupId() const { return group_; }
+    void setGroup(int group) { group_ = group; }
+
     void render(int n, const Params& p, double* out) {
         env_.setShape(p.amp_attack, p.amp_decay, p.amp_sustain, p.amp_release);
         fltEnv_.setShape(p.flt_attack, p.flt_decay, p.flt_sustain, p.flt_release);
@@ -308,6 +319,7 @@ private:
     double freq_ = 0.0;
     double velocity_ = 0.0;
     long triggerOrder_ = 0;
+    int group_ = -1;
     bool lpfBypassed_ = false;
     double oscPhase_ = 0.0;
     bool gliding_ = false;

@@ -58,6 +58,11 @@ target_include_directories(golden_check PRIVATE tests)
 target_link_libraries(golden_check PRIVATE snakeoil_dsp)
 snakeoil_strict_warnings(golden_check)
 
+add_executable(dsp_selftest tests/dsp_selftest.cpp)
+target_link_libraries(dsp_selftest PRIVATE snakeoil_dsp)
+snakeoil_strict_warnings(dsp_selftest)
+add_test(NAME dsp_selftest COMMAND dsp_selftest)
+
 # Golden sound lock: replay each scenario and compare with the Python reference
 # (tools/export_cpp_golden.py). Runs without JUCE.
 file(GLOB _snakeoil_golden "${CMAKE_CURRENT_SOURCE_DIR}/tests/golden/*.scenario.json")

@@ -1,0 +1,66 @@
+{
+  "sample_rate": 44100,
+  "block_size": 256,
+  "blocks": 60,
+  "params": {
+    "osc1_square": true,
+    "osc1_pwm": 0.35,
+    "osc2_level": 0.6,
+    "osc2_pwm": 0.4,
+    "osc2_octave": false
+  },
+  "events": [
+    {
+      "block": 0,
+      "note_on": [
+        48,
+        100
+      ]
+    },
+    {
+      "block": 0,
+      "note_on": [
+        52,
+        100
+      ]
+    },
+    {
+      "block": 0,
+      "note_on": [
+        55,
+        100
+      ]
+    },
+    {
+      "block": 0,
+      "note_on": [
+        59,
+        100
+      ]
+    },
+    {
+      "block": 20,
+      "note_off": [
+        48
+      ]
+    },
+    {
+      "block": 20,
+      "note_off": [
+        52
+      ]
+    },
+    {
+      "block": 20,
+      "note_off": [
+        55
+      ]
+    },
+    {
+      "block": 20,
+      "note_off": [
+        59
+      ]
+    }
+  ]
+}

@@ -37,9 +37,20 @@ def _chord_events(note_off_block):
     return events
 
 
-def _scenario(params=None, blocks=BLOCKS, note_off_block=NOTE_OFF_BLOCK):
+def _scenario(params=None, blocks=BLOCKS, note_off_block=NOTE_OFF_BLOCK,
+              tail_slots=0):
     return {"sample_rate": SR, "block_size": BLOCK, "blocks": blocks,
-            "params": dict(params or {}), "events": _chord_events(note_off_block)}
+            "tail_slots": tail_slots, "params": dict(params or {}),
+            "events": _chord_events(note_off_block)}
+
+
+def _many_notes_scenario(count, params=None, tail_slots=0):
+    notes = list(range(48, 48 + count))
+    events = [{"block": 0, "note_on": [n, 100]} for n in notes]
+    events += [{"block": 30, "note_off": [n]} for n in notes]
+    return {"sample_rate": SR, "block_size": BLOCK, "blocks": BLOCKS,
+            "tail_slots": tail_slots, "params": dict(params or {}),
+            "events": events}
 
 
 SCENARIOS = {
@@ -122,13 +133,38 @@ SCENARIOS = {
     "tempo_sync": lambda: _scenario(
         {"fx_delay": True, "fx_delay_sync": True, "fx_delay_division": "1/8",
          "tempo_bpm": 120.0}),
+    "mod_am": lambda: _scenario(
+        {"osc2_level": 0.8, "mod_mode": "am", "fm_depth": 0.5}),
+    "mod_ring": lambda: _scenario(
+        {"osc2_level": 0.8, "mod_mode": "ring", "fm_depth": 0.5}),
+    "mod_sync": lambda: _scenario(
+        {"osc2_level": 0.8, "mod_mode": "sync", "fm_depth": 0.5,
+         "detune2_semitones": 7.0}),
+    "mod_off": lambda: _scenario(
+        {"osc2_level": 0.8, "mod_mode": "off"}),
+    "octaves": lambda: _scenario(
+        {"osc1_octave": True, "osc2_octave": True, "osc2_level": 0.5,
+         "osc1_square": False}),
+    "filter_master": lambda: _scenario(
+        {"lpf_master": True, "lpf_cutoff": 1500.0, "lpf_resonance": 0.4}),
+    "filter_master_lfo": lambda: _scenario(
+        {"lpf_master": True, "lpf_cutoff": 2000.0, "lfo2_depth": 1.0,
+         "lfo2_dest": "filter", "lfo2_wave": "sine", "lfo2_rate": 2.0}),
+    "square_off": lambda: _scenario(
+        {"osc1_square": False, "osc1_pwm": 0.3}),
+    "pwm_wide": lambda: _scenario(
+        {"osc1_square": True, "osc1_pwm": 0.35, "osc2_level": 0.6,
+         "osc2_pwm": 0.4, "osc2_octave": False}),
+    "steal": lambda: _many_notes_scenario(20),
+    "steal_tail": lambda: _many_notes_scenario(20, tail_slots=6),
 }
 
 
 def render(scenario, registry):
     engine = SynthEngine(sr=scenario["sample_rate"],
                          block_size=scenario["block_size"],
-                         max_voices=12)
+                         max_voices=12,
+                         tail_slots=scenario.get("tail_slots", 0))
     registry_args = build_registry(engine)
     for param_id, value in scenario["params"].items():
         registry_args.set(param_id, value)

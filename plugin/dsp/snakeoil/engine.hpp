@@ -2,8 +2,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <set>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <vector>
 
@@ -23,10 +25,13 @@ namespace snakeoil {
 // ones the DSP understands are synced into Params once per block.
 class Engine {
 public:
-    Engine(double sampleRate, int blockSize, int maxVoices = kMaxVoices)
+    Engine(double sampleRate, int blockSize, int maxVoices = kMaxVoices,
+           int tailSlots = 0, int tailCapacity = -1)
         : sr_(sampleRate), blockSize_(blockSize), maxVoices_(std::min(maxVoices, kMaxVoices)),
           effects_(sampleRate) {
-        for (int i = 0; i < maxVoices_; ++i) {
+        tailCapacity_ = std::max(tailCapacity < 0 ? tailSlots : tailCapacity, 0);
+        tailSlots_ = std::min(std::max(tailSlots, 0), tailCapacity_);
+        for (int i = 0; i < maxVoices_ + tailCapacity_; ++i) {
             voices_.emplace_back(sampleRate);
         }
         prepare(blockSize);
@@ -74,7 +79,7 @@ public:
         lastFreq_ = midiNoteToFreq(note);
         hasLastFreq_ = true;
         lastNote_ = note;
-        Voice& voice = allocate();
+        Voice& voice = tailSlots_ > 0 ? allocateHybrid(1) : allocateClassic();
         voice.noteOn(note, vel, order_, voice.active(), glideFrom, glideTime);
     }
 
@@ -597,7 +602,7 @@ private:
         }
     }
 
-    Voice& allocate() {
+    Voice& allocateClassic() {
         for (auto& v : voices_) {
             if (!v.active()) {
                 return v;
@@ -624,6 +629,132 @@ private:
             }
         }
         return *best;
+    }
+
+    using VictimKey = std::tuple<int, double, long>;
+
+    VictimKey victimKey(const std::vector<Voice*>& group) const {
+        long oldest = group.front()->triggerOrder();
+        bool anyGate = false;
+        double sum = 0.0;
+        for (auto* v : group) {
+            oldest = std::min(oldest, v->triggerOrder());
+            anyGate = anyGate || v->gated();
+            sum += v->envLevel();
+        }
+        if (anyGate) {
+            return VictimKey(1, 0.0, oldest);
+        }
+        return VictimKey(0, sum, oldest);
+    }
+
+    std::vector<std::vector<Voice*>> voiceGroups(const std::vector<Voice*>& voices,
+                                                 bool perVoice) const {
+        std::vector<std::vector<Voice*>> groups;
+        std::vector<int> keys;
+        for (auto* v : voices) {
+            const int key = (perVoice || v->groupId() < 0)
+                                ? 1000000 + static_cast<int>(v - voices_.data())
+                                : v->groupId();
+            int pos = -1;
+            for (std::size_t i = 0; i < keys.size(); ++i) {
+                if (keys[i] == key) {
+                    pos = static_cast<int>(i);
+                    break;
+                }
+            }
+            if (pos < 0) {
+                keys.push_back(key);
+                groups.emplace_back();
+                pos = static_cast<int>(groups.size()) - 1;
+            }
+            groups[static_cast<std::size_t>(pos)].push_back(v);
+        }
+        return groups;
+    }
+
+    std::vector<Voice*> forceReleaseFor(int count) {
+        std::vector<Voice*> forced;
+        while (true) {
+            std::vector<Voice*> held;
+            for (auto& v : voices_) {
+                if (v.gated()) {
+                    held.push_back(&v);
+                }
+            }
+            if (static_cast<int>(held.size()) + count <= maxVoices_ || held.empty()) {
+                return forced;
+            }
+            auto groups = voiceGroups(held, false);
+            std::size_t oldest = 0;
+            long oldestOrder = groups.front().front()->triggerOrder();
+            for (std::size_t i = 0; i < groups.size(); ++i) {
+                long order = groups[i].front()->triggerOrder();
+                for (auto* v : groups[i]) {
+                    order = std::min(order, v->triggerOrder());
+                }
+                if (order < oldestOrder) {
+                    oldestOrder = order;
+                    oldest = i;
+                }
+            }
+            for (auto* v : groups[oldest]) {
+                v->forceRelease(kForcedReleaseS);
+                forced.push_back(v);
+            }
+        }
+    }
+
+    Voice& allocateHybrid(int count) {
+        const std::vector<Voice*> forced = forceReleaseFor(count);
+        int active = 0;
+        for (auto& v : voices_) {
+            if (v.active()) {
+                ++active;
+            }
+        }
+        const int room = std::max(maxVoices_ + tailSlots_ - active, 0);
+        std::vector<Voice*> chosen;
+        for (auto& v : voices_) {
+            if (!v.active() && static_cast<int>(chosen.size()) < std::min(room, count)) {
+                chosen.push_back(&v);
+            }
+        }
+        if (static_cast<int>(chosen.size()) >= count) {
+            return *chosen.front();
+        }
+        std::set<Voice*> skip(forced.begin(), forced.end());
+        const bool perVoice = count == 1;
+        auto victims = [&](const std::function<bool(Voice*)>& pred) {
+            std::vector<Voice*> cands;
+            for (auto& v : voices_) {
+                if (v.active() && pred(&v)) {
+                    cands.push_back(&v);
+                }
+            }
+            auto groups = voiceGroups(cands, perVoice);
+            std::sort(groups.begin(), groups.end(),
+                      [this](const std::vector<Voice*>& a, const std::vector<Voice*>& b) {
+                          return victimKey(a) < victimKey(b);
+                      });
+            return groups;
+        };
+        const std::vector<std::vector<Voice*>> tiers[3] = {
+            victims([&](Voice* v) { return !v->gated() && skip.count(v) == 0; }),
+            victims([&](Voice* v) { return skip.count(v) > 0; }),
+            victims([&](Voice* v) { return v->gated(); }),
+        };
+        for (const auto& tier : tiers) {
+            for (const auto& group : tier) {
+                for (auto* v : group) {
+                    chosen.push_back(v);
+                }
+                if (static_cast<int>(chosen.size()) >= count) {
+                    return *chosen.front();
+                }
+            }
+        }
+        return chosen.empty() ? voices_.front() : *chosen.front();
     }
 
     void ensureBuffers(int n) {
@@ -657,6 +788,8 @@ private:
     double sr_;
     int blockSize_;
     int maxVoices_;
+    int tailSlots_ = 0;
+    int tailCapacity_ = 0;
     std::vector<Voice> voices_;
     Params params_;
     LowPass masterLpf_;

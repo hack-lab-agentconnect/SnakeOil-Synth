@@ -72,9 +72,15 @@ int main(int argc, char** argv) {
     const double sampleRate = scenario.find("sample_rate")->number;
     const int blockSize = static_cast<int>(scenario.find("block_size")->number);
     const int blocks = static_cast<int>(scenario.find("blocks")->number);
+    int tailSlots = 0;
+    if (const jsonmini::Value* tail = scenario.find("tail_slots")) {
+        if (tail->isNumber()) {
+            tailSlots = static_cast<int>(tail->number);
+        }
+    }
     const jsonmini::Value* events = scenario.find("events");
 
-    snakeoil::Engine engine(sampleRate, blockSize);
+    snakeoil::Engine engine(sampleRate, blockSize, snakeoil::kMaxVoices, tailSlots, tailSlots);
     if (const jsonmini::Value* params = scenario.find("params")) {
         if (params->isObject()) {
             for (const auto& entry : params->object) {
