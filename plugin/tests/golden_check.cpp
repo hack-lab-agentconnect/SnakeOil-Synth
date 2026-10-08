@@ -81,6 +81,34 @@ int main(int argc, char** argv) {
     const jsonmini::Value* events = scenario.find("events");
 
     snakeoil::Engine engine(sampleRate, blockSize, snakeoil::kMaxVoices, tailSlots, tailSlots);
+    const std::string scenarioPath = argv[1];
+    const std::size_t slash = scenarioPath.find_last_of('/');
+    const std::string goldenDir =
+        slash == std::string::npos ? std::string(".") : scenarioPath.substr(0, slash);
+    if (const jsonmini::Value* tables = scenario.find("noise_tables")) {
+        for (const auto& color : tables->array) {
+            std::vector<float> raw;
+            const std::string path = goldenDir + "/noisetable_" + color.str + ".f32";
+            if (readFloats(path, raw)) {
+                engine.setNoiseTable(color.str,
+                                     std::vector<double>(raw.begin(), raw.end()));
+            }
+        }
+    }
+    if (const jsonmini::Value* starts = scenario.find("noise_starts")) {
+        std::vector<long long> values;
+        for (const auto& value : starts->array) {
+            values.push_back(static_cast<long long>(value.number));
+        }
+        engine.setNoiseStarts(std::move(values));
+    }
+    if (const jsonmini::Value* phases = scenario.find("unison_phases")) {
+        std::vector<double> values;
+        for (const auto& value : phases->array) {
+            values.push_back(value.number);
+        }
+        engine.setUnisonPhases(std::move(values));
+    }
     if (const jsonmini::Value* params = scenario.find("params")) {
         if (params->isObject()) {
             for (const auto& entry : params->object) {

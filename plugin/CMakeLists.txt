@@ -76,6 +76,11 @@ foreach(_scenario ${_snakeoil_golden})
 endforeach()
 
 # --- Plugin ------------------------------------------------------------------
+juce_add_binary_data(SnakeOilData SOURCES
+    tests/golden/noisetable_white.f32
+    tests/golden/noisetable_pink.f32
+    tests/golden/noisetable_brown.f32)
+
 juce_add_plugin(SnakeOilSynth
     COMPANY_NAME "SnakeOil"
     PRODUCT_NAME "SnakeOil Synth"
@@ -100,6 +105,7 @@ target_compile_definitions(SnakeOilSynth PUBLIC
 target_link_libraries(SnakeOilSynth
     PRIVATE
         snakeoil_dsp
+        SnakeOilData
         juce::juce_audio_utils
     PUBLIC
         juce::juce_recommended_config_flags

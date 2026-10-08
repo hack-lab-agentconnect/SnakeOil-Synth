@@ -65,6 +65,9 @@ struct Params {
     double lfo_pwm = 0.0;
     const double* lfo_amp = nullptr;
 
+    double noise_level = 0.0;
+    const std::vector<double>* noise_table = nullptr;
+
     double master_gain = kDefaultMasterGain;
 };
 
@@ -95,12 +98,18 @@ public:
 
     // ``velocity`` is normalised 0..1 (the engine divides the MIDI value).
     void noteOn(int note, double velocity, long order, bool stolen,
-                double glideFrom, double glideTime) {
+                double glideFrom, double glideTime, long long noisePos,
+                double detuneCents = 0.0, double pan = 0.0, double gain = 1.0,
+                bool randomPhase = false, double phase1 = 0.0, double phase2 = 0.0) {
         note_ = note;
         gate_ = true;
         freq_ = midiNoteToFreq(note);
         velocity_ = velocity;
         triggerOrder_ = order;
+        noisePos_ = noisePos;
+        detuneCents_ = detuneCents;
+        pan_ = pan;
+        gain_ = gain;
         gliding_ = glideFrom > 0.0 && glideTime > 0.0;
         glideFrom_ = glideFrom;
         glideTotal_ = glideTime;
@@ -111,14 +120,21 @@ public:
             fltEnv_.noteOn();
             return;
         }
-        osc1_.reset();
-        osc2_.reset();
+        if (randomPhase) {
+            osc1_.setPhase(phase1);
+            osc2_.setPhase(phase2);
+        } else {
+            osc1_.reset();
+            osc2_.reset();
+        }
         env_.noteOn();
         fltEnv_.setIdle();
         fltEnv_.noteOn();
         lpf_.reset();
         oscPhase_ = 0.0;
     }
+
+    double pan() const { return pan_; }
 
     void noteOff() {
         gate_ = false;
@@ -167,9 +183,16 @@ public:
         const double f2 = freq * semitonesToRatio(p.detune2_semitones, p.detune2_cents) *
                           (p.osc2_octave_up ? 2.0 : 1.0);
         const double f1 = freq * (p.osc1_octave_down ? 0.5 : 1.0);
+        double f1d = f1;
+        double f2d = f2;
+        if (detuneCents_ != 0.0) {
+            const double ud = std::pow(2.0, detuneCents_ / 1200.0);
+            f1d *= ud;
+            f2d *= ud;
+        }
         const double limit = 0.45 * sr_;
-        const double f1c = std::min(f1, limit);
-        const double f2c = std::min(f2, limit);
+        const double f1c = std::min(f1d, limit);
+        const double f2c = std::min(f2d, limit);
         const bool audible2 = p.osc2_level != 0.0;
 
         if (p.mod_mode == Mode::kSync) {
@@ -218,6 +241,16 @@ public:
             mix_[k] = v;
         }
 
+        if (p.noise_level > 0.0 && p.noise_table != nullptr && !p.noise_table->empty()) {
+            const std::vector<double>& tbl = *p.noise_table;
+            const long long size = static_cast<long long>(tbl.size());
+            const long long pos = noisePos_ % size;
+            for (int k = 0; k < n; ++k) {
+                mix_[k] += p.noise_level * tbl[static_cast<std::size_t>((pos + k) % size)];
+            }
+            noisePos_ = (pos + n) % size;
+        }
+
         if (p.lpf_in_voice) {
             applyVoiceFilter(n, p);
         }
@@ -230,6 +263,11 @@ public:
         if (p.lfo_amp != nullptr) {
             for (int k = 0; k < n; ++k) {
                 out[k] *= p.lfo_amp[k];
+            }
+        }
+        if (gain_ != 1.0) {
+            for (int k = 0; k < n; ++k) {
+                out[k] *= gain_;
             }
         }
     }
@@ -326,6 +364,10 @@ private:
     double glideFrom_ = 0.0;
     double glideTotal_ = 0.0;
     double glidePos_ = 0.0;
+    long long noisePos_ = 0;
+    double detuneCents_ = 0.0;
+    double pan_ = 0.0;
+    double gain_ = 1.0;
     std::vector<double> mod_, sec_, phaseMod_, envBuf_, mix_, ramp_;
 };
 

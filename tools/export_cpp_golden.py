@@ -21,6 +21,7 @@ import numpy as np  # noqa: E402
 
 from midi_synth.engine import SynthEngine  # noqa: E402
 from midi_synth.params import build_registry  # noqa: E402
+from midi_synth import noise  # noqa: E402
 
 OUT_DIR = os.path.join(ROOT, "plugin", "tests", "golden")
 
@@ -51,6 +52,36 @@ def _many_notes_scenario(count, params=None, tail_slots=0):
     return {"sample_rate": SR, "block_size": BLOCK, "blocks": BLOCKS,
             "tail_slots": tail_slots, "params": dict(params or {}),
             "events": events}
+
+
+def _noise_scenario(color, level=0.6):
+    rng = np.random.default_rng(777)
+    starts = [int(rng.integers(262144)) for _ in range(len(NOTES))]
+    return {"sample_rate": SR, "block_size": BLOCK, "blocks": BLOCKS,
+            "tail_slots": 0,
+            "params": {"noise_level": level, "noise_color": color},
+            "noise_starts": starts, "noise_tables": [color],
+            "events": _chord_events(NOTE_OFF_BLOCK)}
+
+
+class _PhaseRng:
+    """Test-only stand-in for engine._rng: replays recorded unison phases."""
+
+    def __init__(self, values):
+        self._it = iter(values)
+
+    def random(self):
+        return next(self._it)
+
+
+def _unison_scenario(count, params=None):
+    values = np.random.default_rng(1234).random(2 * count * len(NOTES))
+    merged = {"unison_voices": str(count)}
+    merged.update(params or {})
+    return {"sample_rate": SR, "block_size": BLOCK, "blocks": BLOCKS,
+            "tail_slots": 0, "params": merged,
+            "unison_phases": [float(v) for v in values],
+            "events": _chord_events(NOTE_OFF_BLOCK)}
 
 
 SCENARIOS = {
@@ -157,6 +188,14 @@ SCENARIOS = {
          "osc2_pwm": 0.4, "osc2_octave": False}),
     "steal": lambda: _many_notes_scenario(20),
     "steal_tail": lambda: _many_notes_scenario(20, tail_slots=6),
+    "noise_white": lambda: _noise_scenario("white"),
+    "noise_pink": lambda: _noise_scenario("pink"),
+    "noise_brown": lambda: _noise_scenario("brown"),
+    "unison3": lambda: _unison_scenario(3, {"unison_detune": 15.0,
+                                            "unison_spread": 0.5,
+                                            "osc2_level": 0.5}),
+    "unison5": lambda: _unison_scenario(5, {"unison_detune": 30.0,
+                                            "unison_spread": 0.8}),
 }
 
 
@@ -168,6 +207,10 @@ def render(scenario, registry):
     registry_args = build_registry(engine)
     for param_id, value in scenario["params"].items():
         registry_args.set(param_id, value)
+    if scenario.get("noise_starts") is not None:
+        engine._noise_start = iter(scenario["noise_starts"]).__next__
+    if scenario.get("unison_phases") is not None:
+        engine._rng = _PhaseRng(scenario["unison_phases"])
     by_block = {}
     for event in scenario["events"]:
         by_block.setdefault(event["block"], []).append(event)
@@ -217,6 +260,10 @@ def main(argv):
             handle.write("\n")
         f32_path = os.path.join(OUT_DIR, name + ".f32")
         audio.astype("<f4").tofile(f32_path)
+        for color in scenario.get("noise_tables", []):
+            table_path = os.path.join(OUT_DIR, "noisetable_%s.f32" % color)
+            np.asarray(noise.table(color), dtype="<f4").tofile(table_path)
+            print("  wrote %s" % table_path)
         print("  wrote %s (%d frames) and %s"
               % (json_path, audio.shape[0], f32_path))
 

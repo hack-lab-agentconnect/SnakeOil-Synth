@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <functional>
+#include <random>
 #include <set>
 #include <string>
 #include <tuple>
@@ -79,8 +81,86 @@ public:
         lastFreq_ = midiNoteToFreq(note);
         hasLastFreq_ = true;
         lastNote_ = note;
-        Voice& voice = tailSlots_ > 0 ? allocateHybrid(1) : allocateClassic();
-        voice.noteOn(note, vel, order_, voice.active(), glideFrom, glideTime);
+        const int count = unisonVoices();
+        if (count <= 1) {
+            Voice& voice = tailSlots_ > 0 ? allocateHybrid(1) : allocateClassic();
+            voice.noteOn(note, vel, order_, voice.active(), glideFrom, glideTime,
+                         nextNoiseStart());
+        } else {
+            noteOnUnison(note, vel, count, glideFrom, glideTime);
+        }
+    }
+
+    int unisonVoices() const {
+        auto it = choices_.find("unison_voices");
+        if (it == choices_.end()) {
+            return 1;
+        }
+        try {
+            return std::min(std::max(std::stoi(it->second), 1), kMaxVoices);
+        } catch (...) {
+            return 1;
+        }
+    }
+
+    std::vector<Voice*> allocateGroup(int count) {
+        if (tailSlots_ > 0) {
+            std::vector<Voice*> out;
+            for (int i = 0; i < count; ++i) {
+                out.push_back(&allocateHybrid(1));
+            }
+            return out;
+        }
+        std::vector<Voice*> chosen;
+        for (auto& v : voices_) {
+            if (!v.active() && static_cast<int>(chosen.size()) < count) {
+                chosen.push_back(&v);
+            }
+        }
+        if (static_cast<int>(chosen.size()) >= count) {
+            return chosen;
+        }
+        // Steal whole groups, quietest/oldest first.
+        std::vector<Voice*> activeVoices;
+        for (auto& v : voices_) {
+            if (v.active()) {
+                activeVoices.push_back(&v);
+            }
+        }
+        auto groups = voiceGroups(activeVoices, false);
+        std::sort(groups.begin(), groups.end(),
+                  [this](const std::vector<Voice*>& a, const std::vector<Voice*>& b) {
+                      return victimKey(a) < victimKey(b);
+                  });
+        for (const auto& group : groups) {
+            for (auto* v : group) {
+                chosen.push_back(v);
+            }
+            if (static_cast<int>(chosen.size()) >= count) {
+                break;
+            }
+        }
+        return chosen;
+    }
+
+    void noteOnUnison(int note, double vel, int count, double glideFrom, double glideTime) {
+        std::vector<Voice*> pool = allocateGroup(count);
+        for (std::size_t i = static_cast<std::size_t>(count); i < pool.size(); ++i) {
+            pool[i]->noteOff();
+        }
+        ++groupCounter_;
+        const double detune = value("unison_detune", 15.0);
+        const double spread = value("unison_spread", 0.5);
+        const double gain = 1.0 / std::sqrt(static_cast<double>(count));
+        for (int i = 0; i < count; ++i) {
+            Voice* v = pool[static_cast<std::size_t>(i)];
+            const double pos = count > 1 ? -1.0 + 2.0 * i / (count - 1) : 0.0;
+            const bool stolen = v->active();
+            const std::pair<double, double> phases = nextPhasePair();
+            v->setGroup(groupCounter_);
+            v->noteOn(note, vel, order_, stolen, glideFrom, glideTime, nextNoiseStart(),
+                      pos * detune, pos * spread, gain, true, phases.first, phases.second);
+        }
     }
 
     void noteOff(int note) {
@@ -143,6 +223,44 @@ public:
         return true;
     }
 
+    // Noise tables (white/pink/brown) are injected: the golden harness loads the
+    // exact tables exported from the Python reference, and the plugin embeds the
+    // same data. Start positions are injected too when a scenario pins them,
+    // otherwise a local RNG is used (noise is stochastic, so any stream is fine).
+    void setNoiseTable(const std::string& color, std::vector<double> table) {
+        noiseTables_[color] = std::move(table);
+    }
+
+    void setNoiseStarts(std::vector<long long> starts) {
+        noiseStarts_ = std::move(starts);
+        noiseStartIdx_ = 0;
+    }
+
+    long long nextNoiseStart() {
+        if (noiseStartIdx_ < noiseStarts_.size()) {
+            return noiseStarts_[noiseStartIdx_++];
+        }
+        std::uniform_int_distribution<long long> dist(0, 262143);
+        return dist(noiseRng_);
+    }
+
+    // Unison random start phases, injected per scenario (two per voice) or drawn
+    // from a local RNG in the plugin.
+    void setUnisonPhases(std::vector<double> phases) {
+        unisonPhases_ = std::move(phases);
+        unisonPhaseIdx_ = 0;
+    }
+
+    std::pair<double, double> nextPhasePair() {
+        if (unisonPhaseIdx_ + 1 < unisonPhases_.size()) {
+            const double a = unisonPhases_[unisonPhaseIdx_++];
+            const double b = unisonPhases_[unisonPhaseIdx_++];
+            return {a, b};
+        }
+        std::uniform_real_distribution<double> dist(0.0, 1.0);
+        return {dist(unisonRng_), dist(unisonRng_)};
+    }
+
     double getParamById(const std::string& id) const {
         auto it = values_.find(id);
         return it == values_.end() ? 0.0 : it->second;
@@ -169,19 +287,51 @@ public:
         }
         params_.mod_filter = false;
         applyMod();
-        std::fill(mix_.begin(), mix_.begin() + n, 0.0);
+        bool stereo = false;
         for (auto& v : voices_) {
-            if (v.active()) {
-                v.prepare(n);
-                v.render(n, params_, mix_.data());
+            if (v.active() && v.pan() != 0.0) {
+                stereo = true;
+                break;
             }
         }
-        if (!params_.lpf_in_voice && params_.lpf_active) {
-            processMasterFilter(n);
-        }
-        for (int i = 0; i < n; ++i) {
-            left_[i] = mix_[i];
-            right_[i] = mix_[i];
+        if (stereo) {
+            std::fill(left_.begin(), left_.begin() + n, 0.0);
+            std::fill(right_.begin(), right_.begin() + n, 0.0);
+            if (static_cast<int>(voiceOut_.size()) < n) {
+                voiceOut_.resize(n);
+            }
+            for (auto& v : voices_) {
+                if (v.active()) {
+                    v.prepare(n);
+                    std::fill(voiceOut_.begin(), voiceOut_.begin() + n, 0.0);
+                    v.render(n, params_, voiceOut_.data());
+                    const double pan = v.pan();
+                    const double lg = 1.0 - std::max(0.0, pan);
+                    const double rg = 1.0 + std::min(0.0, pan);
+                    for (int k = 0; k < n; ++k) {
+                        left_[k] += voiceOut_[k] * lg;
+                        right_[k] += voiceOut_[k] * rg;
+                    }
+                }
+            }
+            if (!params_.lpf_in_voice && params_.lpf_active) {
+                processMasterFilterStereo(n);
+            }
+        } else {
+            std::fill(mix_.begin(), mix_.begin() + n, 0.0);
+            for (auto& v : voices_) {
+                if (v.active()) {
+                    v.prepare(n);
+                    v.render(n, params_, mix_.data());
+                }
+            }
+            if (!params_.lpf_in_voice && params_.lpf_active) {
+                processMasterFilter(n);
+            }
+            for (int i = 0; i < n; ++i) {
+                left_[i] = mix_[i];
+                right_[i] = mix_[i];
+            }
         }
         if (effectsEnabled()) {
             effects_.process(left_.data(), right_.data(), n);
@@ -294,6 +444,11 @@ private:
         params_.flt_env_amount = std::min(std::max(num("flt_env_amount", 0.0), -1.0), 1.0);
         params_.flt_keytrack = clampUnit(num("flt_keytrack", 0.0));
         params_.flt_vel = clampUnit(num("flt_vel", 0.0));
+        params_.noise_level = clampUnit(num("noise_level", 0.0));
+        {
+            auto table = noiseTables_.find(choice("noise_color", "white"));
+            params_.noise_table = table == noiseTables_.end() ? nullptr : &table->second;
+        }
 
         params_.lpf_in_voice = num("lpf_master", 0.0) < 0.5;
         params_.lpf_cutoff = std::min(std::max(num("lpf_cutoff", kDefaultLpfCutoff), kLpfMinHz), kLpfMaxHz);
@@ -602,6 +757,35 @@ private:
         }
     }
 
+    void processMasterFilterStereo(int n) {
+        if (params_.lfo_filter_oct != 0.0) {
+            double cutoff = params_.lpf_cutoff * std::pow(2.0, params_.lfo_filter_oct);
+            cutoff = std::min(std::max(cutoff, kLpfMinHz), 0.45 * sr_);
+            if (cutoff >= kLpfMaxHz / 1.01) {
+                masterLpf_.reset();
+                masterLpfR_.reset();
+                return;
+            }
+            if (params_.lpf_ladder) {
+                const BiquadPair c = lpf24Coefficients(cutoff, params_.lpf_resonance, sr_);
+                masterLpf_.process(left_.data(), n, c);
+                masterLpfR_.process(right_.data(), n, c);
+            } else {
+                const BiquadCoeffs c = lpfCoefficients(cutoff, params_.lpf_resonance, sr_);
+                masterLpf_.process(left_.data(), n, c);
+                masterLpfR_.process(right_.data(), n, c);
+            }
+            return;
+        }
+        if (params_.lpf_ladder) {
+            masterLpf_.process(left_.data(), n, params_.lpf24);
+            masterLpfR_.process(right_.data(), n, params_.lpf24);
+        } else {
+            masterLpf_.process(left_.data(), n, params_.lpf12);
+            masterLpfR_.process(right_.data(), n, params_.lpf12);
+        }
+    }
+
     Voice& allocateClassic() {
         for (auto& v : voices_) {
             if (!v.active()) {
@@ -767,6 +951,9 @@ private:
         if (static_cast<int>(right_.size()) < n) {
             right_.resize(n);
         }
+        if (static_cast<int>(voiceOut_.size()) < n) {
+            voiceOut_.resize(n);
+        }
         prepare(n);
     }
 
@@ -797,6 +984,8 @@ private:
     std::vector<double> mix_;
     std::vector<double> left_;
     std::vector<double> right_;
+    std::vector<double> voiceOut_;
+    LowPass masterLpfR_;
     Limiter limiter_;
     bool autoLimiter_ = false;
     double limiterSilentS_ = 0.0;
@@ -818,6 +1007,14 @@ private:
     bool meterClip_ = false;
     double hostTempo_ = 120.0;
     bool hasHostTempo_ = false;
+    std::unordered_map<std::string, std::vector<double>> noiseTables_;
+    std::vector<long long> noiseStarts_;
+    std::size_t noiseStartIdx_ = 0;
+    std::mt19937 noiseRng_{std::random_device{}()};
+    std::vector<double> unisonPhases_;
+    std::size_t unisonPhaseIdx_ = 0;
+    std::mt19937 unisonRng_{std::random_device{}()};
+    long groupCounter_ = 0;
     std::unordered_map<std::string, double> values_;
     std::unordered_map<std::string, std::string> choices_;
     std::set<int> sustained_;

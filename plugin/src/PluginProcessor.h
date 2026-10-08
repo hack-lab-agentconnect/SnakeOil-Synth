@@ -44,6 +44,7 @@ private:
     static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout();
     void syncParametersToEngine();
     void handleMidi(const juce::MidiBuffer&);
+    void loadNoiseTables();
 
     juce::AudioProcessorValueTreeState apvts_;
     std::unique_ptr<snakeoil::Engine> engine_;

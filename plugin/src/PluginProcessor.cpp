@@ -6,11 +6,22 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 
 #include "PluginEditor.h"
+#include <SnakeOilData.h>
 
 namespace {
 
 juce::StringArray splitChoices(const char* choices) {
     return juce::StringArray::fromTokens(juce::String(choices == nullptr ? "" : choices), "|", "");
+}
+
+std::vector<double> binaryToDoubles(const char* data, int sizeInBytes) {
+    const int count = sizeInBytes / static_cast<int>(sizeof(float));
+    std::vector<double> out(static_cast<std::size_t>(count));
+    const auto* floats = reinterpret_cast<const float*>(data);
+    for (int i = 0; i < count; ++i) {
+        out[static_cast<std::size_t>(i)] = static_cast<double>(floats[i]);
+    }
+    return out;
 }
 
 }  // namespace
@@ -26,6 +37,7 @@ SnakeOilProcessor::SnakeOilProcessor()
         rawValues_.push_back(apvts_.getRawParameterValue(spec->id));
     }
     engine_ = std::make_unique<snakeoil::Engine>(44100.0, 512);
+    loadNoiseTables();
     for (int i = 0; i < count; ++i) {
         if (specs_[static_cast<std::size_t>(i)]->kind == snakeoil::ParamKind::Choice) {
             const auto choices = splitChoices(specs_[static_cast<std::size_t>(i)]->choices);
@@ -71,7 +83,20 @@ juce::AudioProcessorValueTreeState::ParameterLayout SnakeOilProcessor::makeLayou
 void SnakeOilProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
     const int block = std::min(std::max(samplesPerBlock, 64), snakeoil::kMaxBlock);
     engine_ = std::make_unique<snakeoil::Engine>(sampleRate, block);
+    loadNoiseTables();
     scratch_.assign(static_cast<std::size_t>(block) * 2, 0.0f);
+}
+
+void SnakeOilProcessor::loadNoiseTables() {
+    if (engine_ == nullptr) {
+        return;
+    }
+    engine_->setNoiseTable("white", binaryToDoubles(BinaryData::noisetable_white_f32,
+                                                    BinaryData::noisetable_white_f32Size));
+    engine_->setNoiseTable("pink", binaryToDoubles(BinaryData::noisetable_pink_f32,
+                                                   BinaryData::noisetable_pink_f32Size));
+    engine_->setNoiseTable("brown", binaryToDoubles(BinaryData::noisetable_brown_f32,
+                                                    BinaryData::noisetable_brown_f32Size));
 }
 
 bool SnakeOilProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const {
