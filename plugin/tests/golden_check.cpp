@@ -35,9 +35,9 @@ bool readFloats(const std::string& path, std::vector<float>& out) {
 void applySet(snakeoil::Engine& engine, const std::string& id,
               const jsonmini::Value& value) {
     if (value.isNumber()) {
-        engine.setParam(id, value.number);
+        engine.setParamById(id, value.number);
     } else if (value.type == jsonmini::Value::kBool) {
-        engine.setToggle(id, value.boolean);
+        engine.setParamById(id, value.boolean ? 1.0 : 0.0);
     } else if (value.isString()) {
         engine.setChoice(id, value.str);
     }

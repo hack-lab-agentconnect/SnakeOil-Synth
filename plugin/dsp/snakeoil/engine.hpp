@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "snakeoil/biquad.hpp"
@@ -11,9 +13,10 @@
 
 namespace snakeoil {
 
-// Minimal engine for phase P1: 12 classic voices, one shared 12 dB low-pass,
-// master gain and tanh. Mirrors SynthEngine.render for the default scenario
-// (no effects, no LFO, no mod matrix, unison off).
+// Minimal engine for phase P1/P2: 12 classic voices, one low-pass, master gain
+// and tanh. Parameters arrive by registry id (the same ids as
+// midi_synth/params.py and plugin/params.json) and are stored generically; the
+// ones the DSP understands are synced into Params once per block.
 class Engine {
 public:
     Engine(double sampleRate, int blockSize, int maxVoices = kMaxVoices)
@@ -22,12 +25,14 @@ public:
             voices_.emplace_back(sampleRate);
         }
         prepare(blockSize);
-        updateLpf();
+        loadDefaults();
+        syncHotParams();
     }
 
     Params& params() { return params_; }
     const Params& params() const { return params_; }
     double sampleRate() const { return sr_; }
+    int blockSize() const { return blockSize_; }
 
     int activeVoices() const {
         int count = 0;
@@ -47,12 +52,17 @@ public:
             }
         }
         ++order_;
-        const double vel = clampUnit(velocity / 127.0);
+        const bool velocityOn = values_.at("velocity_on") >= 0.5;
+        const double vel = velocityOn ? clampUnit(velocity / 127.0) : kFixedVelocity;
         Voice& voice = allocate();
         voice.noteOn(note, vel, order_, voice.active());
     }
 
     void noteOff(int note) {
+        if (sustain_) {
+            sustained_.insert(note);
+            return;
+        }
         for (auto& v : voices_) {
             if (v.note() == note && v.gated()) {
                 v.noteOff();
@@ -61,6 +71,7 @@ public:
     }
 
     void allNotesOff() {
+        sustained_.clear();
         for (auto& v : voices_) {
             if (v.active()) {
                 v.noteOff();
@@ -68,67 +79,58 @@ public:
         }
     }
 
-    // Parameter setter used by the golden scenario "set" events and the plugin
-    // later. Returns false for ids this phase does not know.
-    bool setParam(const std::string& id, double value) {
-        if (id == "osc1_level") {
-            params_.osc1_level = clampUnit(value);
-        } else if (id == "osc2_level") {
-            params_.osc2_level = clampUnit(value);
-        } else if (id == "osc1_square_level") {
-            params_.osc1_square_level = clampUnit(value);
-        } else if (id == "osc1_pwm") {
-            params_.osc1_pwm = clampUnit(value / 0.5) * 0.5;
-        } else if (id == "osc2_pwm") {
-            params_.osc2_pwm = clampUnit(value / 0.5) * 0.5;
-        } else if (id == "fm_depth") {
-            params_.fm_depth = clampUnit(value);
-            params_.mod_index = params_.fm_depth * kFmIndexMax;
-        } else if (id == "detune2_semitones") {
-            params_.detune2_semitones =
-                std::min(std::max(value, kSemitoneMin), kSemitoneMax);
-        } else if (id == "detune2_cents") {
-            params_.detune2_cents = std::min(std::max(value, kCentsMin), kCentsMax);
-        } else if (id == "master_gain") {
-            params_.master_gain = std::min(std::max(value, 0.0), 1.5);
-        } else if (id == "lpf_cutoff") {
-            lpfCutoff_ = std::min(std::max(value, kLpfMinHz), kLpfMaxHz);
-            updateLpf();
-        } else if (id == "lpf_resonance") {
-            lpfResonance_ = clampUnit(value);
-            updateLpf();
-        } else {
-            return false;
+    void setSustain(bool on) {
+        sustain_ = on;
+        if (!on) {
+            for (auto& v : voices_) {
+                if (v.gated() && sustained_.count(v.note()) > 0) {
+                    v.noteOff();
+                }
+            }
+            sustained_.clear();
         }
-        return true;
     }
 
-    bool setToggle(const std::string& id, bool value) {
-        if (id == "osc1_square") {
-            params_.osc1_square = value;
-        } else if (id == "osc1_octave_down") {
-            params_.osc1_octave_down = value;
-        } else if (id == "osc2_octave_up") {
-            params_.osc2_octave_up = value;
-        } else {
-            return false;
-        }
+    void setPitchBend(double normalized) {
+        pitchBend_ = normalized * kPitchBendRange;
+        params_.pitch_ratio = std::pow(2.0, pitchBend_ / 12.0);
+    }
+
+    void setModWheel(double value) { modWheel_ = clampUnit(value); }
+    void setAftertouch(double value) { aftertouch_ = clampUnit(value); }
+
+    void resetControllers() {
+        setPitchBend(0.0);
+        setSustain(false);
+        modWheel_ = 0.0;
+        aftertouch_ = 0.0;
+    }
+
+    // --- parameter interface (ids match the Python registry) ---------------
+
+    bool setParamById(const std::string& id, double value) {
+        values_[id] = value;
         return true;
     }
 
     bool setChoice(const std::string& id, const std::string& value) {
-        if (id == "mod_mode") {
-            params_.mod_mode = parseMode(value);
-        } else if (id == "lpf_mode") {
-            params_.lpf_in_voice = value != "master";
-        } else {
-            return false;
-        }
+        choices_[id] = value;
         return true;
+    }
+
+    double getParamById(const std::string& id) const {
+        auto it = values_.find(id);
+        return it == values_.end() ? 0.0 : it->second;
+    }
+
+    std::string getChoice(const std::string& id) const {
+        auto it = choices_.find(id);
+        return it == choices_.end() ? std::string() : it->second;
     }
 
     // Render n frames of stereo float32, interleaved L/R.
     void render(float* interleaved, int n) {
+        syncHotParams();
         ensureBuffers(n);
         std::fill(mix_.begin(), mix_.begin() + n, 0.0);
         for (auto& v : voices_) {
@@ -149,6 +151,61 @@ public:
 
 private:
     static double clampUnit(double v) { return std::min(std::max(v, 0.0), 1.0); }
+
+    void loadDefaults() {
+        // Defaults mirror midi_synth/config.py and the registry defaults.
+        values_ = {
+            {"osc1_level", 1.0}, {"osc1_square", 1.0}, {"osc1_square_level", 0.5},
+            {"osc1_pwm", 0.0}, {"osc1_octave", 0.0},
+            {"osc2_level", 0.0}, {"detune2_semitones", 0.0}, {"detune2_cents", 0.0},
+            {"osc2_pwm", 0.0}, {"osc2_octave", 1.0},
+            {"fm_depth", 0.0},
+            {"lpf_cutoff", kDefaultLpfCutoff}, {"lpf_resonance", 0.0},
+            {"lpf_master", 0.0},
+            {"master_gain", kDefaultMasterGain},
+            {"velocity_on", 1.0}, {"auto_limiter", 0.0},
+            {"amp_attack", kAmpAttack}, {"amp_decay", kAmpDecay},
+            {"amp_sustain", kAmpSustain}, {"amp_release", kAmpRelease},
+        };
+        choices_ = {
+            {"mod_mode", "fm"}, {"lpf_slope", "12 dB"},
+        };
+    }
+
+    void syncHotParams() {
+        const auto num = [this](const char* id, double fallback) {
+            auto it = values_.find(id);
+            return it == values_.end() ? fallback : it->second;
+        };
+        params_.osc1_level = clampUnit(num("osc1_level", 1.0));
+        params_.osc2_level = clampUnit(num("osc2_level", 0.0));
+        params_.osc1_square = num("osc1_square", 1.0) >= 0.5;
+        params_.osc1_square_level = clampUnit(num("osc1_square_level", 0.5));
+        params_.osc1_pwm = std::min(std::max(num("osc1_pwm", 0.0), 0.0), 0.5);
+        params_.osc2_pwm = std::min(std::max(num("osc2_pwm", 0.0), 0.0), 0.5);
+        params_.osc1_octave_down = num("osc1_octave", 0.0) >= 0.5;
+        params_.osc2_octave_up = num("osc2_octave", 1.0) >= 0.5;
+        params_.detune2_semitones =
+            std::min(std::max(num("detune2_semitones", 0.0), kSemitoneMin), kSemitoneMax);
+        params_.detune2_cents =
+            std::min(std::max(num("detune2_cents", 0.0), kCentsMin), kCentsMax);
+        params_.fm_depth = clampUnit(num("fm_depth", 0.0));
+        params_.mod_index = params_.fm_depth * kFmIndexMax;
+        params_.master_gain = std::min(std::max(num("master_gain", kDefaultMasterGain), 0.0), 1.5);
+        params_.lpf_in_voice = num("lpf_master", 0.0) < 0.5;
+        const double cutoff = std::min(std::max(num("lpf_cutoff", kDefaultLpfCutoff), kLpfMinHz), kLpfMaxHz);
+        const double resonance = clampUnit(num("lpf_resonance", 0.0));
+        if (cutoff >= kLpfMaxHz / 1.01) {
+            params_.lpf_active = false;
+        } else {
+            params_.lpf_active = true;
+            params_.lpf = lpfCoefficients(cutoff, resonance, sr_);
+        }
+        auto modeIt = choices_.find("mod_mode");
+        if (modeIt != choices_.end()) {
+            params_.mod_mode = parseMode(modeIt->second);
+        }
+    }
 
     static Mode parseMode(const std::string& name) {
         if (name == "off") return Mode::kOff;
@@ -187,15 +244,6 @@ private:
         return *best;
     }
 
-    void updateLpf() {
-        if (lpfCutoff_ >= kLpfMaxHz / 1.01) {
-            params_.lpf_active = false;
-        } else {
-            params_.lpf_active = true;
-            params_.lpf = lpfCoefficients(lpfCutoff_, lpfResonance_, sr_);
-        }
-    }
-
     void ensureBuffers(int n) {
         if (static_cast<int>(mix_.size()) < n) {
             mix_.resize(n);
@@ -219,9 +267,14 @@ private:
     Params params_;
     LowPass masterLpf_;
     std::vector<double> mix_;
+    std::unordered_map<std::string, double> values_;
+    std::unordered_map<std::string, std::string> choices_;
+    std::set<int> sustained_;
+    bool sustain_ = false;
+    double pitchBend_ = 0.0;
+    double modWheel_ = 0.0;
+    double aftertouch_ = 0.0;
     long order_ = 0;
-    double lpfCutoff_ = kDefaultLpfCutoff;
-    double lpfResonance_ = 0.0;
 };
 
 }  // namespace snakeoil
